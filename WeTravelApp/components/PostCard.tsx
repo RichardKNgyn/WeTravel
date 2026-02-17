@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, Image, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { theme } from "../constants/theme";
 import type { Post } from "../data/posts";
 
@@ -48,7 +49,7 @@ export default function PostCard({ post }: { post: Post }) {
               <Text style={styles.actionText}>{likes}</Text>
             </Pressable>
 
-            <Pressable onPress={() => {}} style={styles.actionBtn} hitSlop={10}>
+            <Pressable onPress={() => router.push(`/post/${post.id}`)} style={styles.actionBtn} hitSlop={10}>
               <Ionicons name="chatbubble-outline" size={20} color={theme.colors.text} />
               <Text style={styles.actionText}>Comment</Text>
             </Pressable>
