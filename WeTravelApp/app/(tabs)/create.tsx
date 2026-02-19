@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { theme } from "../../constants/theme";
 import PrimaryButton from "../../components/PrimaryButton";
 
@@ -11,7 +12,11 @@ export default function Create() {
         <Text style={styles.title}>Create</Text>
         <Text style={styles.sub}>Upload / post flow goes here 📸</Text>
 
-        <PrimaryButton title="Add a post" onPress={() => {}} style={{ marginTop: theme.spacing.lg }} />
+        <PrimaryButton
+          title="Add a post"
+          onPress={() => router.push('/create-post')}
+          style={{ marginTop: theme.spacing.lg }}
+        />
       </View>
     </SafeAreaView>
   );
