@@ -1,29 +1,84 @@
+import { Platform } from 'react-native';
+
+const tintColorLight = '#0a7ea4';
+const tintColorDark = '#fff';
+
+export const Colors = {
+  light: {
+    text: '#11181C',
+    background: '#fff',
+    tint: tintColorLight,
+    icon: '#687076',
+    tabIconDefault: '#687076',
+    tabIconSelected: tintColorLight,
+  },
+  dark: {
+    text: '#ECEDEE',
+    background: '#151718',
+    tint: tintColorDark,
+    icon: '#9BA1A6',
+    tabIconDefault: '#9BA1A6',
+    tabIconSelected: tintColorDark,
+  },
+};
+
+export const Fonts = Platform.select({
+  ios: {
+    sans: 'system-ui',
+    serif: 'ui-serif',
+    rounded: 'ui-rounded',
+    mono: 'ui-monospace',
+  },
+  default: {
+    sans: 'normal',
+    serif: 'serif',
+    rounded: 'normal',
+    mono: 'monospace',
+  },
+  web: {
+    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    serif: "Georgia, 'Times New Roman', serif",
+    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
+    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  },
+});
+
 export const theme = {
   colors: {
-    bg: "#FFFFFF",
-    text: "#111827",
-    subtext: "#6B7280",
-    border: "#E5E7EB",
-    card: "#FFFFFF",
-    primary: "#0B3A67",
-    muted: "#F3F4F6",
-    danger: "#DC2626",
-  },
-  spacing: {
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 24,
-  },
-  radius: {
-    sm: 10,
-    md: 14,
-    lg: 18,
+    text: '#11181C',
+    subtext: '#687076',
+    border: '#E0E0E0',
+    muted: '#F5F5F5',
+    background: '#FFFFFF',
+    bg: '#FFFFFF',
+    primary: '#0a7ea4',
+    white: '#FFFFFF',
+    error: '#e53935',
   },
   input: {
     height: 48,
   },
   button: {
-    height: 52,
+    height: 48,
+  },
+  radius: {
+    sm: 6,
+    md: 10,
+    lg: 16,
+    xl: 24,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+  },
+  font: {
+    sm: 12,
+    md: 15,
+    lg: 18,
+    xl: 24,
+    xxl: 32,
   },
 };
