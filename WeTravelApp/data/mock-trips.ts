@@ -1,11 +1,15 @@
 export type TripDestination = {
   id: string;
   location_name: string;
-  planned_time: string;
-  duration_hours: number;
+  planned_time: string | null;
+  duration_hours: number | null;
   note: string;
   location_place_id: string;
   order_index: number;
+  latitude?: number; // Optional coordinates for navigtion and offline access
+  longitude?: number; // Optional coordinates for navigation and offline access
+  status?: 'Pending' | 'Active' | 'Completed'; // Optional status to track trip progress
+  actual_arrival_time?: string | null; // Incase of schedule shifting
 };
 
 export const MOCK_TRIP_DATA: TripDestination[] = [

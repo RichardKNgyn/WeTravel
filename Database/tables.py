@@ -81,7 +81,26 @@ def create_tables():
     )
     """)
     print("Likes Table create")
-
+    
+    #Trips table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        location_name TEXT NOT NULL,
+        planned_time TEXT,
+        duration_hours REAL,
+        note TEXT,
+        location_place_id TEXT,
+        order_index INTEGER NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        status TEXT DEFAULT 'Pending',
+        actual_arrival_time TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+    """)
+    print("Trips Table create")
 
 ####
 
