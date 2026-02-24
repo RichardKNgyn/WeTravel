@@ -3,23 +3,23 @@ import { View, TextInput, StyleSheet, FlatList, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../../constants/theme";
 import PostCard from "../../components/PostCard";
-import { POSTS, Post } from "../../data/posts";
+import { usePosts } from "../../hooks/use-posts";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function Feed() {
   const [query, setQuery] = useState("");
+  const { posts } = usePosts();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return POSTS;
-    return POSTS.filter((p) => {
-      return (
-        p.user.toLowerCase().includes(q) ||
-        p.caption.toLowerCase().includes(q) ||
-        (p.location ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [query]);
+    if (!q) return posts;
+    return posts.filter((p) =>
+      p.author.toLowerCase().includes(q) ||
+      p.title.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q) ||
+      (p.location ?? "").toLowerCase().includes(q)
+    );
+  }, [query, posts]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -35,7 +35,7 @@ export default function Feed() {
           />
         </View>
 
-        <FlatList<Post>
+        <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}
