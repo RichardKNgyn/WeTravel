@@ -78,7 +78,7 @@ export default function PostDetail() {
               <Ionicons
                 name={liked ? "heart" : "heart-outline"}
                 size={22}
-                color={liked ? theme.colors.danger : theme.colors.text}
+                color={liked ? theme.colors.error : theme.colors.text}
               />
               <Text style={styles.actionText}>{likes}</Text>
             </Pressable>
