@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, ReactNode, useContext, useState } from 'react';
+
+export type Comment = {
+  id: string;
+  user: string;
+  text: string;
+  likes?: number;
+  replies: Comment[];
+};
 
 export type Post = {
   id: string;
@@ -9,12 +17,15 @@ export type Post = {
   author: string;
   createdAt: string;
   likes: number;
+  comments: Comment[];
 };
 
 type PostsContextType = {
   posts: Post[];
   addPost: (post: Post) => void;
   toggleLike: (postId: string) => void;
+  addComment: (postId: string, text: string) => void;
+  addReply: (postId: string, commentId: string, text: string) => void;
   likedPosts: Set<string>;
 };
 
@@ -30,6 +41,37 @@ const SAMPLE_POSTS: Post[] = [
     author: 'Maria K.',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
     likes: 142,
+    comments: [
+  {
+    id: "c1",
+    user: "Liam",
+    text: "This view is unreal 😍",
+    likes: 2,
+    replies: [
+      {
+        id: "r1",
+        user: "Sophia",
+        text: "Right?? Santorini sunsets never disappoint.",
+        likes: 1,
+        replies: [],
+      },
+    ],
+  },
+  {
+    id: "c2",
+    user: "Ethan",
+    text: "Adding this to my bucket list.",
+    likes: 0,
+    replies: [],
+  },
+  {
+    id: "c3",
+    user: "Olivia",
+    text: "How crowded was it?",
+    likes: 0,
+    replies: [],
+  },
+],
   },
   {
     id: 'sample-2',
@@ -40,6 +82,37 @@ const SAMPLE_POSTS: Post[] = [
     author: 'James T.',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
     likes: 89,
+    comments: [
+  {
+    id: "c4",
+    user: "Ava",
+    text: "Kyoto is magical in the fall 🍁",
+    likes: 3,
+    replies: [
+      {
+        id: "r2",
+        user: "Noah",
+        text: "Totally agree. The temples are stunning.",
+        likes: 1,
+        replies: [],
+      },
+    ],
+  },
+  {
+    id: "c5",
+    user: "Lucas",
+    text: "Nishiki Market is elite.",
+    likes: 1,
+    replies: [],
+  },
+  {
+    id: "c6",
+    user: "Mia",
+    text: "How was the cycling experience?",
+    likes: 0,
+    replies: [],
+  },
+],
   },
   {
     id: 'sample-3',
@@ -50,6 +123,37 @@ const SAMPLE_POSTS: Post[] = [
     author: 'Amara N.',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
     likes: 217,
+    comments: [
+  {
+    id: "c7",
+    user: "Harper",
+    text: "The migration is on my dream list.",
+    likes: 4,
+    replies: [
+      {
+        id: "r3",
+        user: "Elijah",
+        text: "Same here. The scale must be insane.",
+        likes: 2,
+        replies: [],
+      },
+    ],
+  },
+  {
+    id: "c8",
+    user: "Amelia",
+    text: "Safari mornings hit different.",
+    likes: 1,
+    replies: [],
+  },
+  {
+    id: "c9",
+    user: "Benjamin",
+    text: "Did you see any lions?",
+    likes: 0,
+    replies: [],
+  },
+],
   },
 ];
 
@@ -80,8 +184,68 @@ export function PostsProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const addComment = (postId: string, text: string) => {
+  setPosts(prev =>
+    prev.map(post =>
+      post.id === postId
+        ? {
+            ...post,
+            comments: [
+              ...(post.comments ?? []),
+              {
+                id: Date.now().toString(),
+                user: "You",
+                text,
+                likes: 0,
+                replies: [],
+              },
+            ],
+          }
+        : post
+    )
+  );
+};
+
+const addReply = (postId: string, commentId: string, text: string) => {
+  const addReplyRecursive = (comments: Comment[]): Comment[] => {
+    return comments.map(comment => {
+      if (comment.id === commentId) {
+        return {
+          ...comment,
+          replies: [
+            ...(comment.replies ?? []),
+            {
+              id: Date.now().toString(),
+              user: "You",
+              text,
+              likes: 0,
+              replies: [],
+            },
+          ],
+        };
+      }
+
+      return {
+        ...comment,
+        replies: addReplyRecursive(comment.replies ?? []),
+      };
+    });
+  };
+
+  setPosts(prev =>
+    prev.map(post =>
+      post.id === postId
+        ? {
+            ...post,
+            comments: addReplyRecursive(post.comments),
+          }
+        : post
+    )
+  );
+};
+
   return (
-    <PostsContext.Provider value={{ posts, addPost, toggleLike, likedPosts }}>
+    <PostsContext.Provider value={{ posts, addPost, toggleLike, likedPosts, addComment, addReply }}>
       {children}
     </PostsContext.Provider>
   );

@@ -1,47 +1,108 @@
+import { usePosts } from "@/hooks/use-posts";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
-  Text,
   Image,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  Pressable,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { POSTS, type Comment } from "../../data/posts";
 import { theme } from "../../constants/theme";
+import type { Comment } from "../../hooks/use-posts";
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const post = POSTS.find((p) => p.id === id);
+  const { posts, addComment, addReply } = usePosts();
+const post = posts.find(p => p.id === id) ?? null;
 
-  const [liked, setLiked] = useState(false);
-  const [comments, setComments] = useState<Comment[]>(post?.comments ?? []);
-  const [input, setInput] = useState("");
+const [liked, setLiked] = useState(false);
+const [input, setInput] = useState("");
+const [replyTarget, setReplyTarget] = useState<string | null>(null);
+const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  if (!post) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.notFound}>Post not found.</Text>
-      </View>
-    );
-  }
+if (!post) {
+  return null;
+}
 
   const likes = post.likes + (liked ? 1 : 0);
 
-  function handleAddComment() {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-    setComments((prev) => [
+function handleAddComment() {
+  const trimmed = input.trim();
+  if (!trimmed || !post) return;
+
+  if (replyTarget) {
+    addReply(post.id, replyTarget, trimmed);
+
+    setExpanded(prev => ({
       ...prev,
-      { id: String(Date.now()), user: "You", text: trimmed },
-    ]);
-    setInput("");
+      [replyTarget]: true,
+    }));
+
+    setReplyTarget(null);
+  } else {
+    addComment(post.id, trimmed);
   }
+
+  setInput("");
+}
+
+function renderComment(comment: Comment, level = 0) {
+  return (
+    <View key={comment.id} style={{ marginLeft: level * 20, marginBottom: 12 }}>
+      <View style={styles.commentRow}>
+        <View style={styles.commentAvatar}>
+          <Text style={styles.commentAvatarText}>
+            {comment.user?.[0]?.toUpperCase() ?? "U"}
+          </Text>
+        </View>
+
+        <View style={styles.commentBubble}>
+          <Text style={styles.commentUser}>{comment.user}</Text>
+          <Text
+  style={[
+    styles.commentText,
+    { fontSize: level > 0 ? 12 : 13 }
+  ]}
+>
+  {comment.text}
+</Text>
+
+          <View style={{ flexDirection: "row", gap: 15, marginTop: 6 }}>
+            <Pressable onPress={() => setReplyTarget(comment.id)}>
+              <Text style={{ fontSize: 12, color: theme.colors.subtext }}>
+                Reply
+              </Text>
+            </Pressable>
+
+            {comment.replies.length > 0 && (
+              <Pressable
+                onPress={() =>
+                  setExpanded(prev => ({
+                    ...prev,
+                    [comment.id]: !prev[comment.id],
+                  }))
+                }
+              >
+                <Text style={{ fontSize: 12, color: theme.colors.subtext }}>
+                  {expanded[comment.id] ? "Hide replies" : "View replies"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </View>
+
+      {expanded[comment.id] &&
+        comment.replies.map(reply => renderComment(reply, level + 1))}
+    </View>
+  );
+}
 
   return (
     <KeyboardAvoidingView
@@ -50,24 +111,27 @@ export default function PostDetail() {
       keyboardVerticalOffset={90}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Image source={{ uri: post.image }} style={styles.image} />
+        <Image
+  source={{ uri: post.images?.[0] ?? "https://via.placeholder.com/800" }}
+  style={styles.image}
+/>
 
         <View style={styles.body}>
           <View style={styles.userRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {post.user?.[0]?.toUpperCase() ?? "U"}
+                {post.author?.[0]?.toUpperCase() ?? "U"}
               </Text>
             </View>
             <View>
-              <Text style={styles.user}>{post.user}</Text>
+              <Text style={styles.user}>{post.author}</Text>
               {post.location ? (
                 <Text style={styles.location}>{post.location}</Text>
               ) : null}
             </View>
           </View>
 
-          <Text style={styles.caption}>{post.caption}</Text>
+          <Text style={styles.caption}>{post.description}</Text>
 
           <View style={styles.actionsRow}>
             <Pressable
@@ -78,7 +142,7 @@ export default function PostDetail() {
               <Ionicons
                 name={liked ? "heart" : "heart-outline"}
                 size={22}
-                color={liked ? theme.colors.danger : theme.colors.text}
+                color={liked ? theme.colors.error : theme.colors.text}
               />
               <Text style={styles.actionText}>{likes}</Text>
             </Pressable>
@@ -89,7 +153,7 @@ export default function PostDetail() {
                 size={22}
                 color={theme.colors.text}
               />
-              <Text style={styles.actionText}>{comments.length}</Text>
+              <Text style={styles.actionText}>{post.comments.length}</Text>
             </View>
           </View>
 
@@ -97,26 +161,25 @@ export default function PostDetail() {
 
           <Text style={styles.sectionLabel}>Comments</Text>
 
-          {comments.length === 0 ? (
-            <Text style={styles.noComments}>No comments yet. Be the first!</Text>
-          ) : (
-            comments.map((c) => (
-              <View key={c.id} style={styles.commentRow}>
-                <View style={styles.commentAvatar}>
-                  <Text style={styles.commentAvatarText}>
-                    {c.user?.[0]?.toUpperCase() ?? "U"}
-                  </Text>
-                </View>
-                <View style={styles.commentBubble}>
-                  <Text style={styles.commentUser}>{c.user}</Text>
-                  <Text style={styles.commentText}>{c.text}</Text>
-                </View>
-              </View>
-            ))
-          )}
+            {post.comments.length === 0 ? (
+  <Text style={styles.noComments}>
+    No comments yet. Be the first!
+  </Text>
+) : (
+  post.comments.map((comment: Comment) => renderComment(comment))
+)}
         </View>
       </ScrollView>
-
+{replyTarget && (
+  <View style={{ paddingHorizontal: 16, paddingVertical: 6, backgroundColor: theme.colors.muted }}>
+    <Text style={{ fontSize: 12, color: theme.colors.subtext }}>
+      Replying…
+    </Text>
+    <Pressable onPress={() => setReplyTarget(null)}>
+      <Text style={{ fontSize: 12, color: theme.colors.error }}>Cancel</Text>
+    </Pressable>
+  </View>
+)}
       <View style={styles.inputBar}>
         <TextInput
           style={styles.textInput}
