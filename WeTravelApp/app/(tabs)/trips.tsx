@@ -11,7 +11,7 @@ import { Picker } from "@react-native-picker/picker";
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 
 // Replace after obtaining our own API key from Google Cloud Console
-const GOOGLE_MAPS_API_KEY = 'OUR_GOOGLE_MAPS_API_KEY';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyCIbxO6Po6LDAzyMivEXtAB3xNbRrc-etI';
 
 export default function Trips() {
   const [data, setData] = useState(MOCK_TRIP_DATA);
