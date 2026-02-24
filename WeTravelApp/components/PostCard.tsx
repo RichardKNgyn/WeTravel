@@ -71,7 +71,7 @@ export default function PostCard({ post }: { post: Post }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.bg,
+    backgroundColor: theme.colors.white,
     borderRadius: theme.radius.lg,
     overflow: "hidden",
     borderWidth: 1,
