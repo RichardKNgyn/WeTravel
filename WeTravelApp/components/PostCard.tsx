@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Image, Pressable } from "react-native";
+import type { Post } from "@/hooks/use-posts";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import React, { useMemo, useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { theme } from "../constants/theme";
-import type { Post } from "../data/posts";
 
 export default function PostCard({ post }: { post: Post }) {
   const [liked, setLiked] = useState(false);
@@ -11,16 +11,19 @@ export default function PostCard({ post }: { post: Post }) {
 
   return (
     <View style={styles.card}>
-      <Image source={{ uri: post.image }} style={styles.image} />
+      <Image
+  source={{ uri: post.images?.[0] ?? "https://via.placeholder.com/800" }}
+  style={styles.image}
+/>
 
       <View style={styles.body}>
         <View style={styles.row}>
           <View style={styles.userBlock}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{post.user?.[0]?.toUpperCase() ?? "U"}</Text>
+              <Text style={styles.avatarText}>{post.author?.[0]?.toUpperCase() ?? "U"}</Text>
             </View>
             <View>
-              <Text style={styles.user}>{post.user}</Text>
+              <Text style={styles.user}>{post.author}</Text>
               {post.location ? <Text style={styles.location}>{post.location}</Text> : null}
             </View>
           </View>
@@ -31,7 +34,7 @@ export default function PostCard({ post }: { post: Post }) {
         </View>
 
         <Text style={styles.caption} numberOfLines={3}>
-          {post.caption}
+          {post.description}
         </Text>
 
         <View style={[styles.row, { marginTop: 10 }]}>

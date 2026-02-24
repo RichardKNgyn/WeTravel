@@ -1,19 +1,17 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  Dimensions,
-  Platform,
-  StatusBar,
-} from 'react-native';
-import { router } from 'expo-router';
-import { usePosts } from '@/hooks/use-posts';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
-import { useState } from 'react';
+import { usePosts } from '@/hooks/use-posts';
+import { router } from 'expo-router';
+import {
+  Dimensions,
+  Image,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 40;

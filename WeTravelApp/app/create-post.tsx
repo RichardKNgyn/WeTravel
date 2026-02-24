@@ -1,23 +1,22 @@
-import { useState, useRef } from 'react';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePosts } from '@/hooks/use-posts';
+import * as ImagePicker from 'expo-image-picker';
+import { router } from 'expo-router';
+import { useRef, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Image,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Animated,
+  View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
-import { usePosts } from '@/hooks/use-posts';
 
 const MAX_IMAGES = 6;
 
@@ -118,15 +117,16 @@ export default function CreatePostScreen() {
     await new Promise((res) => setTimeout(res, 1200));
 
     addPost({
-      id: Date.now().toString(),
-      title: title.trim(),
-      description: description.trim(),
-      location: location.trim(),
-      images,
-      author: 'You',
-      createdAt: new Date().toISOString(),
-      likes: 0,
-    });
+  id: Date.now().toString(),
+  title: title.trim(),
+  description: description.trim(),
+  location: location.trim(),
+  images,
+  author: "You",
+  createdAt: new Date().toISOString(),
+  likes: 0,
+  comments: [],
+});
 
     setIsPosting(false);
     router.back();
