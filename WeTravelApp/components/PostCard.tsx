@@ -44,7 +44,7 @@ export default function PostCard({ post }: { post: Post }) {
               <Ionicons
                 name={liked ? "heart" : "heart-outline"}
                 size={20}
-                color={liked ? theme.colors.danger : theme.colors.text}
+                color={liked ? theme.colors.error : theme.colors.text}
               />
               <Text style={styles.actionText}>{likes}</Text>
             </Pressable>
@@ -71,7 +71,7 @@ export default function PostCard({ post }: { post: Post }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.white,
     borderRadius: theme.radius.lg,
     overflow: "hidden",
     borderWidth: 1,
