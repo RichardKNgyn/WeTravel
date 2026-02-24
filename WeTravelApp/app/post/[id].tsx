@@ -12,15 +12,15 @@ import {
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { POSTS, type Comment } from "../../data/posts";
+import { usePosts, type Comment } from "../../hooks/use-posts";
 import { theme } from "../../constants/theme";
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const post = POSTS.find((p) => p.id === id);
+  const { posts, addComment } = usePosts();
+  const post = posts.find((p) => p.id === id);
 
   const [liked, setLiked] = useState(false);
-  const [comments, setComments] = useState<Comment[]>(post?.comments ?? []);
   const [input, setInput] = useState("");
 
   if (!post) {
@@ -36,10 +36,7 @@ export default function PostDetail() {
   function handleAddComment() {
     const trimmed = input.trim();
     if (!trimmed) return;
-    setComments((prev) => [
-      ...prev,
-      { id: String(Date.now()), user: "You", text: trimmed },
-    ]);
+    addComment(post!.id, { id: String(Date.now()), user: "You", text: trimmed });
     setInput("");
   }
 
@@ -50,24 +47,29 @@ export default function PostDetail() {
       keyboardVerticalOffset={90}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Image source={{ uri: post.image }} style={styles.image} />
+        {post.images[0] ? (
+          <Image source={{ uri: post.images[0] }} style={styles.image} />
+        ) : null}
 
         <View style={styles.body}>
           <View style={styles.userRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {post.user?.[0]?.toUpperCase() ?? "U"}
+                {post.author?.[0]?.toUpperCase() ?? "U"}
               </Text>
             </View>
             <View>
-              <Text style={styles.user}>{post.user}</Text>
+              <Text style={styles.user}>{post.author}</Text>
               {post.location ? (
                 <Text style={styles.location}>{post.location}</Text>
               ) : null}
             </View>
           </View>
 
-          <Text style={styles.caption}>{post.caption}</Text>
+          <Text style={styles.title}>{post.title}</Text>
+          {post.description ? (
+            <Text style={styles.caption}>{post.description}</Text>
+          ) : null}
 
           <View style={styles.actionsRow}>
             <Pressable
@@ -84,12 +86,8 @@ export default function PostDetail() {
             </Pressable>
 
             <View style={styles.actionBtn}>
-              <Ionicons
-                name="chatbubble-outline"
-                size={22}
-                color={theme.colors.text}
-              />
-              <Text style={styles.actionText}>{comments.length}</Text>
+              <Ionicons name="chatbubble-outline" size={22} color={theme.colors.text} />
+              <Text style={styles.actionText}>{post.comments.length}</Text>
             </View>
           </View>
 
@@ -97,10 +95,10 @@ export default function PostDetail() {
 
           <Text style={styles.sectionLabel}>Comments</Text>
 
-          {comments.length === 0 ? (
+          {post.comments.length === 0 ? (
             <Text style={styles.noComments}>No comments yet. Be the first!</Text>
           ) : (
-            comments.map((c) => (
+            post.comments.map((c) => (
               <View key={c.id} style={styles.commentRow}>
                 <View style={styles.commentAvatar}>
                   <Text style={styles.commentAvatarText}>
@@ -191,10 +189,17 @@ const styles = StyleSheet.create({
     color: theme.colors.subtext,
     marginTop: 1,
   },
+  title: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: theme.colors.text,
+    marginBottom: 6,
+  },
   caption: {
     fontSize: 14,
     lineHeight: 20,
     color: theme.colors.text,
+    opacity: 0.8,
     marginBottom: theme.spacing.md,
   },
   actionsRow: {
