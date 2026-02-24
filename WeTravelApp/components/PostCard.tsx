@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { theme } from "../constants/theme";
-import type { Post } from "../data/posts";
+import type { Post } from "../hooks/use-posts";
 
 export default function PostCard({ post }: { post: Post }) {
   const [liked, setLiked] = useState(false);
@@ -11,16 +11,18 @@ export default function PostCard({ post }: { post: Post }) {
 
   return (
     <View style={styles.card}>
-      <Image source={{ uri: post.image }} style={styles.image} />
+      {post.images[0] ? (
+        <Image source={{ uri: post.images[0] }} style={styles.image} />
+      ) : null}
 
       <View style={styles.body}>
         <View style={styles.row}>
           <View style={styles.userBlock}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{post.user?.[0]?.toUpperCase() ?? "U"}</Text>
+              <Text style={styles.avatarText}>{post.author?.[0]?.toUpperCase() ?? "U"}</Text>
             </View>
             <View>
-              <Text style={styles.user}>{post.user}</Text>
+              <Text style={styles.user}>{post.author}</Text>
               {post.location ? <Text style={styles.location}>{post.location}</Text> : null}
             </View>
           </View>
@@ -30,9 +32,10 @@ export default function PostCard({ post }: { post: Post }) {
           </Pressable>
         </View>
 
-        <Text style={styles.caption} numberOfLines={3}>
-          {post.caption}
-        </Text>
+        <Text style={styles.title}>{post.title}</Text>
+        {post.description ? (
+          <Text style={styles.caption} numberOfLines={3}>{post.description}</Text>
+        ) : null}
 
         <View style={[styles.row, { marginTop: 10 }]}>
           <View style={styles.actions}>
@@ -51,7 +54,7 @@ export default function PostCard({ post }: { post: Post }) {
 
             <Pressable onPress={() => router.push(`/post/${post.id}`)} style={styles.actionBtn} hitSlop={10}>
               <Ionicons name="chatbubble-outline" size={20} color={theme.colors.text} />
-              <Text style={styles.actionText}>Comment</Text>
+              <Text style={styles.actionText}>{post.comments.length}</Text>
             </Pressable>
 
             <Pressable onPress={() => {}} style={styles.actionBtn} hitSlop={10}>
@@ -121,12 +124,18 @@ const styles = StyleSheet.create({
     color: theme.colors.subtext,
     marginTop: 1,
   },
-  caption: {
+  title: {
     marginTop: 10,
+    fontSize: 15,
+    fontWeight: "800",
+    color: theme.colors.text,
+  },
+  caption: {
+    marginTop: 4,
     fontSize: 13.5,
     lineHeight: 18,
     color: theme.colors.text,
-    opacity: 0.9,
+    opacity: 0.8,
   },
   actions: {
     flexDirection: "row",
