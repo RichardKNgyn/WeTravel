@@ -63,7 +63,7 @@ export default function Trips() {
           onLongPress={drag}
           onPress={() => setEditingItem(item)}
           disabled={isActive}
-          style={[styles.card, { backgroundColor: isActive ? theme.colors.muted : theme.colors.card }]}
+          style={[styles.card, { backgroundColor: isActive ? theme.colors.muted : theme.colors.white }]}
         >
           <View style={styles.dragHandle}>
             <Ionicons name="menu-outline" size={24} color={theme.colors.subtext} />
@@ -78,7 +78,7 @@ export default function Trips() {
           </View>
 
           <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteButton}>
-            <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
+            <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
           </TouchableOpacity>
         </TouchableOpacity>
       </ScaleDecorator>
