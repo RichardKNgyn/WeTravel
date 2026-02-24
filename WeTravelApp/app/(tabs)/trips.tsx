@@ -1,17 +1,17 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import DraggableFlatList, { ScaleDecorator, RenderItemParams } from "react-native-draggable-flatlist";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
+import { Picker } from "@react-native-picker/picker";
+import React, { useEffect, useRef, useState } from "react";
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import { SafeAreaView } from "react-native-safe-area-context";
+import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
-import PrimaryButton from "../../components/PrimaryButton";
-import { Picker } from "@react-native-picker/picker";
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 
 // Replace after obtaining our own API key from Google Cloud Console
-const GOOGLE_MAPS_API_KEY = 'OUR_GOOGLE_MAPS_API_KEY';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyCIbxO6Po6LDAzyMivEXtAB3xNbRrc-etI';
 
 export default function Trips() {
   const [data, setData] = useState(MOCK_TRIP_DATA);
