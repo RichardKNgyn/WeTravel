@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from "react-native-draggable-flatlist";
@@ -8,10 +8,18 @@ import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
 import PrimaryButton from "../../components/PrimaryButton";
 import { Picker } from "@react-native-picker/picker";
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+
+// Replace after obtaining our own API key from Google Cloud Console
+const GOOGLE_MAPS_API_KEY = 'OUR_GOOGLE_MAPS_API_KEY';
 
 export default function Trips() {
   const [data, setData] = useState(MOCK_TRIP_DATA);
   const [editingItem, setEditingItem] = useState<TripDestination | null>(null);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [lastDeleted, setLastDeleted] = useState<{ item: TripDestination; index: number } | null>(null);
+  const [showUndo, setShowUndo] = useState(false);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // States for time and duration pickers in the edit modal
   const [tHour, setTHour] = useState("12");
@@ -34,12 +42,59 @@ export default function Trips() {
         setDMin((editingItem.duration_hours % 1) * 60);
       }
     }
-  }, [editingItem]);  
+  }, [editingItem]);
+
+  const handleAddManualTrip = (details: any) => {
+    const newEntry: TripDestination = {
+      id: Date.now().toString(),
+      location_name: details.name || details.formatted_address,
+      location_place_id: details.place_id,
+      latitude: details.geometry.location.lat,
+      longitude: details.geometry.location.lng,
+      order_index: data.length,
+      status: 'Pending',
+      note: "",
+      planned_time: null,
+      duration_hours: null,
+    };
+
+    setData([...data, newEntry]);
+    setIsSearchVisible(false);
+  };
 
   const handleDelete = (id: string) => {
-    const filtered = data.filter(item => item.id !== id);
-    const updated = filtered.map((item, index) => ({ ...item, order_index: index }));
+    const indexToDelete = data.findIndex(item => item.id === id);
+    if (indexToDelete === -1) return;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+    const itemToDelete = data[indexToDelete];
+    setLastDeleted({ item: itemToDelete, index: indexToDelete });
+    
+    const newData = data.filter(item => item.id !== id);
+    const updated = newData.map((item, index) => ({ ...item, order_index: index }));
     setData(updated);
+    
+    setShowUndo(true);
+    undoTimerRef.current = setTimeout(() => {
+      setShowUndo(false);
+      setLastDeleted(null);
+    }, 4000);
+  };
+
+  const handleUndo = () => {
+    if (!lastDeleted) return;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+
+    const newData = [...data];
+    newData.splice(lastDeleted.index, 0, lastDeleted.item);
+    const restored = newData.map((item, index) => ({ ...item, order_index: index }));
+    setData(restored);
+    
+    setShowUndo(false);
+    setLastDeleted(null);
   };
 
   const handleUpdateItem = () => {
@@ -85,6 +140,17 @@ export default function Trips() {
     );
   };
 
+  const renderFooter = () => (
+    <TouchableOpacity 
+      style={styles.addCard} 
+      onPress={() => setIsSearchVisible(true)}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="add" size={24} color={theme.colors.primary} style={{ marginRight: 8 }} />
+      <Text style={styles.addText}>Add Destination</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -100,8 +166,46 @@ export default function Trips() {
             }}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
+            ListFooterComponent={renderFooter}
             contentContainerStyle={styles.list}
           />
+
+          {showUndo && (
+            <View style={styles.undoContainer}>
+              <Text style={styles.undoText}>Destination deleted</Text>
+              <TouchableOpacity onPress={handleUndo} style={styles.undoButton}>
+                <Text style={styles.undoButtonText}>UNDO</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Modal visible={isSearchVisible} animationType="fade">
+            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.bg }}>
+              <View style={styles.searchHeader}>
+                <TouchableOpacity onPress={() => setIsSearchVisible(false)}>
+                  <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.searchTitle}>Add Destination</Text>
+                <View style={{ width: 28 }} />
+              </View>
+              
+              <GooglePlacesAutocomplete
+                placeholder='Search for a place...'
+                fetchDetails={true}
+                onPress={(data, details = null) => {
+                  if (details) handleAddManualTrip(details);
+                }}
+                query={{
+                  key: GOOGLE_MAPS_API_KEY,
+                  language: 'en',
+                }}
+                styles={{
+                  textInputContainer: styles.searchInputContainer,
+                  textInput: styles.searchInput,
+                }}
+              />
+            </SafeAreaView>
+          </Modal>
 
           <Modal visible={!!editingItem} animationType="slide" transparent={true}>
             <View style={styles.modalOverlay}>
@@ -200,6 +304,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
+  addCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.colors.border,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    height: 70,
+  },
+  addText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
   dragHandle: { marginRight: 12 },
   details: { flex: 1 },
   locationName: { fontSize: 16, fontWeight: "700", color: theme.colors.text },
@@ -250,5 +377,58 @@ const styles = StyleSheet.create({
   picker: {
     flex: 1,
     height: 60,
+  },
+  undoContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#323232',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: theme.radius.md,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+  },
+  undoText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  undoButton: {
+    paddingHorizontal: 8,
+  },
+  undoButtonText: {
+    color: theme.colors.primary,
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 15,
+  },
+  searchTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  searchInputContainer: {
+    backgroundColor: theme.colors.muted,
+    marginHorizontal: 15,
+    borderRadius: 10,
+  },
+  searchInput: {
+    height: 45,
+    color: theme.colors.text,
+    fontSize: 16,
+    backgroundColor: 'transparent',
   },
 });
