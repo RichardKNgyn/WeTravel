@@ -2,8 +2,6 @@ export type Comment = {
   id: string;
   user: string;
   text: string;
-  likes?: number;
-  replies?: Comment[];
 };
 
 export type Post = {
@@ -51,9 +49,6 @@ export const POSTS: Post[] = [
     likes: 87,
     comments: [
       { id: "c6", user: "Maya Chen", text: "LA hits different at night" },
-      { id: "c7", user: "Angelo Pineda", text: "The city lights are unreal" },
-      { id: "c8", user: "Karla R.", text: "This is giving me major vibes" },
-      { id: "c9", user: "Maya Chen", text: "Where in LA is this?" },
     ],
   },
 ];
