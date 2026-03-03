@@ -1,10 +1,10 @@
-import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
+import { View, TextInput, StyleSheet, FlatList, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import PostCard from "../../components/PostCard";
 import { theme } from "../../constants/theme";
+import PostCard from "../../components/PostCard";
 import { usePosts } from "../../hooks/use-posts";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function Feed() {
   const [query, setQuery] = useState("");
@@ -13,7 +13,6 @@ export default function Feed() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return posts;
-
     return posts.filter((p) =>
       p.author.toLowerCase().includes(q) ||
       p.title.toLowerCase().includes(q) ||
@@ -39,10 +38,7 @@ export default function Feed() {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{
-            paddingTop: theme.spacing.md,
-            paddingBottom: theme.spacing.lg,
-          }}
+          contentContainerStyle={{ paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg }}
           renderItem={({ item }) => <PostCard post={item} />}
           ListEmptyComponent={
             <View style={{ paddingTop: 60, alignItems: "center" }}>
