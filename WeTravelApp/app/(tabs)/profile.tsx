@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../../constants/theme";
 import { usePosts } from "../../hooks/use-posts";
+import { useUser } from "../../hooks/use-user";
 import PostCard from "../../components/PostCard";
 
 const CURRENT_USER = "You";
@@ -22,11 +23,12 @@ const ACCENT = "#e07b54";
 export default function Profile() {
   const router = useRouter();
   const { posts } = usePosts();
-  const [displayName, setDisplayName] = useState("My Profile");
-  const [handle, setHandle] = useState("traveler");
+  const { user, setUser } = useUser();
+  const displayName = user.displayName || "My Profile";
+  const handle = user.username || "traveler";
   const [editVisible, setEditVisible] = useState(false);
-  const [draftName, setDraftName] = useState(displayName);
-  const [draftHandle, setDraftHandle] = useState(handle);
+  const [draftName, setDraftName] = useState("");
+  const [draftHandle, setDraftHandle] = useState("");
 
   const openEdit = () => {
     setDraftName(displayName);
@@ -35,8 +37,8 @@ export default function Profile() {
   };
 
   const saveEdit = () => {
-    if (draftName.trim()) setDisplayName(draftName.trim());
-    if (draftHandle.trim()) setHandle(draftHandle.trim().replace(/^@/, ""));
+    if (draftName.trim()) setUser({ displayName: draftName.trim() });
+    if (draftHandle.trim()) setUser({ username: draftHandle.trim().replace(/^@/, "") });
     setEditVisible(false);
   };
 
