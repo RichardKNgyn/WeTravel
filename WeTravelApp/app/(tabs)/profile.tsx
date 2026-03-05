@@ -1,10 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  Modal,
+  TextInput,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -13,13 +16,29 @@ import { theme } from "../../constants/theme";
 import { usePosts } from "../../hooks/use-posts";
 import PostCard from "../../components/PostCard";
 
-// Placeholder until real auth is connected
 const CURRENT_USER = "You";
 const ACCENT = "#e07b54";
 
 export default function Profile() {
   const router = useRouter();
   const { posts } = usePosts();
+  const [displayName, setDisplayName] = useState("My Profile");
+  const [handle, setHandle] = useState("traveler");
+  const [editVisible, setEditVisible] = useState(false);
+  const [draftName, setDraftName] = useState(displayName);
+  const [draftHandle, setDraftHandle] = useState(handle);
+
+  const openEdit = () => {
+    setDraftName(displayName);
+    setDraftHandle(handle);
+    setEditVisible(true);
+  };
+
+  const saveEdit = () => {
+    if (draftName.trim()) setDisplayName(draftName.trim());
+    if (draftHandle.trim()) setHandle(draftHandle.trim().replace(/^@/, ""));
+    setEditVisible(false);
+  };
 
   const myPosts = posts.filter((p) => p.author === CURRENT_USER);
   const totalLikes = myPosts.reduce((sum, p) => sum + p.likes, 0);
@@ -51,10 +70,14 @@ export default function Profile() {
             {/* Avatar + name */}
             <View style={styles.profileHeader}>
               <View style={styles.avatarCircle}>
-                <Text style={styles.avatarLetter}>Y</Text>
+                <Text style={styles.avatarLetter}>{displayName[0]?.toUpperCase() ?? "U"}</Text>
               </View>
-              <Text style={styles.displayName}>My Profile</Text>
-              <Text style={styles.handle}>@traveler</Text>
+              <Text style={styles.displayName}>{displayName}</Text>
+              <Text style={styles.handle}>@{handle}</Text>
+              <TouchableOpacity onPress={openEdit} style={styles.editBtn}>
+                <Ionicons name="pencil-outline" size={14} color={theme.colors.subtext} />
+                <Text style={styles.editBtnText}>Edit Profile</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Stats row */}
@@ -96,6 +119,42 @@ export default function Profile() {
           </View>
         }
       />
+      <Modal visible={editVisible} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setEditVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+
+            <Text style={styles.modalLabel}>Display Name</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={draftName}
+              onChangeText={setDraftName}
+              placeholder="Your name"
+              placeholderTextColor={theme.colors.subtext}
+              autoCapitalize="words"
+            />
+
+            <Text style={styles.modalLabel}>Username</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={draftHandle}
+              onChangeText={setDraftHandle}
+              placeholder="username"
+              placeholderTextColor={theme.colors.subtext}
+              autoCapitalize="none"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setEditVisible(false)} style={styles.modalCancelBtn}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveEdit} style={styles.modalSaveBtn}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -215,5 +274,85 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 15,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  editBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: theme.colors.subtext,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: theme.spacing.lg,
+  },
+  modalCard: {
+    width: "100%",
+    backgroundColor: theme.colors.bg,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.colors.subtext,
+    marginBottom: 6,
+    marginTop: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  modalInput: {
+    height: 44,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.muted,
+    paddingHorizontal: theme.spacing.md,
+    fontSize: 15,
+    color: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: theme.spacing.lg,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: theme.colors.subtext,
+  },
+  modalSaveBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: ACCENT,
+    borderRadius: 20,
+  },
+  modalSaveText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#fff",
   },
 });
