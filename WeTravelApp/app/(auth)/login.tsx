@@ -53,10 +53,10 @@ export default function Login() {
         />
 
         <View style={styles.links}>
-          <Pressable onPress={() => {}}>
+          <Pressable onPress={() => router.push("/(auth)/forgot-password" as any)}>
             <Text style={styles.link}>Forgot Password</Text>
           </Pressable>
-          <Pressable onPress={() => {}}>
+          <Pressable onPress={() => router.push("/(auth)/register" as any)}>
             <Text style={styles.link}>New User? Create Account</Text>
           </Pressable>
         </View>
