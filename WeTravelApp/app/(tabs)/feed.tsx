@@ -78,5 +78,6 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontWeight: "700",
     outlineWidth: 0,
+    outline: 'none',
   } as any,
 });
