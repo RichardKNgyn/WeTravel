@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { PostsProvider } from '@/hooks/use-posts';
+import { UserProvider } from '@/hooks/use-user';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -24,6 +25,7 @@ export default function RootLayout() {
   }, []);
 
   return (
+    <UserProvider>
     <PostsProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
@@ -36,5 +38,6 @@ export default function RootLayout() {
         <StatusBar style="auto" />
       </ThemeProvider>
     </PostsProvider>
+    </UserProvider>
   );
 }

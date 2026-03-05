@@ -4,9 +4,11 @@ import { useRouter } from "expo-router";
 import { theme } from "../../constants/theme";
 import TextField from "../../components/TextField";
 import PrimaryButton from "../../components/PrimaryButton";
+import { useUser } from "../../hooks/use-user";
 
 export default function Register() {
   const router = useRouter();
+  const { setUser } = useUser();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
@@ -26,6 +28,7 @@ export default function Register() {
     }
     setLoading(true);
     await new Promise((r) => setTimeout(r, 600));
+    setUser({ displayName: `${firstName.trim()} ${lastName.trim()}`, username: username.trim() });
     setLoading(false);
     router.replace("/(tabs)/feed");
   };
