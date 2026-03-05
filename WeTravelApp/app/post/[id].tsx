@@ -10,13 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePosts, type Comment } from "../../hooks/use-posts";
 import { theme } from "../../constants/theme";
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { posts, addComment } = usePosts();
   const post = posts.find((p) => p.id === id);
 
@@ -47,6 +48,12 @@ export default function PostDetail() {
       keyboardVerticalOffset={90}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.backRow}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
+            <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
+          </Pressable>
+        </View>
+
         {post.images[0] ? (
           <Image source={{ uri: post.images[0] }} style={styles.image} />
         ) : null}
@@ -137,6 +144,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.bg,
+  },
+  backRow: {
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
   },
   content: {
     paddingBottom: 20,
