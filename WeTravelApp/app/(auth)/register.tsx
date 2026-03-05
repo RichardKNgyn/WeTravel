@@ -9,13 +9,14 @@ export default function Register() {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const onCreateAccount = async () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
+    if (!firstName.trim() || !lastName.trim() || !username.trim() || !email.trim() || !password.trim()) {
       Alert.alert("Missing fields", "Please fill in all required fields.");
       return;
     }
@@ -57,6 +58,14 @@ export default function Register() {
               />
             </View>
           </View>
+
+          <TextField
+            value={username}
+            onChangeText={(t) => setUsername(t.replace(/\s/g, ""))}
+            placeholder="Username"
+            autoCapitalize="none"
+            style={{ marginTop: theme.spacing.sm }}
+          />
 
           <TextField
             value={email}
