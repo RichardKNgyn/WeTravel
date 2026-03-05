@@ -79,5 +79,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     outlineWidth: 0,
     outline: 'none',
+    boxShadow: 'none',
   } as any,
 });
