@@ -88,6 +88,7 @@ def create_tables():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         location_name TEXT NOT NULL,
+        address TEXT,
         planned_time TEXT,
         duration_hours REAL,
         note TEXT,
