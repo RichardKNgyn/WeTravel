@@ -44,3 +44,6 @@ app-example
 
 # Python virtual environment
 .venv/
+
+# Map API Keys
+.env
