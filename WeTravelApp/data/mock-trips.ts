@@ -1,6 +1,7 @@
 export type TripDestination = {
   id: string;
   location_name: string;
+  address?: string;
   planned_time: string | null;
   duration_hours: number | null;
   note: string;
@@ -16,6 +17,7 @@ export const MOCK_TRIP_DATA: TripDestination[] = [
   {
     id: "1",
     location_name: "Arboretum at CSUF",
+    address: "1900 Associated Rd, Fullerton, CA 92831",
     planned_time: "09:00 AM",
     duration_hours: 2,
     note: "Great for nature photography.",
@@ -25,6 +27,7 @@ export const MOCK_TRIP_DATA: TripDestination[] = [
   {
     id: "2",
     location_name: "Fullerton Downtown Plaza",
+    address: "125 E Wilshire Ave, Fullerton, CA 92832",
     planned_time: "12:00 PM",
     duration_hours: 2.5,
     note: "Lunch and exploring local shops.",
@@ -34,6 +37,7 @@ export const MOCK_TRIP_DATA: TripDestination[] = [
   {
     id: "3",
     location_name: "Fullerton Public Library",
+    address: "353 W Commonwealth Ave, Fullerton, CA 92832",
     planned_time: "03:00 PM",
     duration_hours: 1,
     note: "Quiet place to relax and read.",
@@ -43,6 +47,7 @@ export const MOCK_TRIP_DATA: TripDestination[] = [
   {
     id: "4",
     location_name: "Craig Regional Park",
+    address: "3300 State College Blvd, Fullerton, CA 92835",
     planned_time: "04:20 PM",
     duration_hours: 1,
     note: "Evening walk around the lake.",
@@ -52,6 +57,7 @@ export const MOCK_TRIP_DATA: TripDestination[] = [
   {
     id: "5",
     location_name: "57 Bar & Grill",
+    address: "2932 Nutwood Ave, Fullerton, CA 92831",
     planned_time: "05:40 PM",
     duration_hours: 2,
     note: "Dinner with drink specials.",
@@ -61,6 +67,7 @@ export const MOCK_TRIP_DATA: TripDestination[] = [
   {
     id: "6",
     location_name: "Fullerton Marriott at CSU",
+    address: "2701 Nutwood Ave, Fullerton, CA 92831",
     planned_time: "09:00 PM",
     duration_hours: 12,
     note: "Overnight stay.",

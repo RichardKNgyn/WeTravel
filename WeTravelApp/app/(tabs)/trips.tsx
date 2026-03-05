@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform } from "react-native";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
@@ -10,8 +10,15 @@ import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
 
-// Replace after obtaining our own API key from Google Cloud Console
-const GOOGLE_MAPS_API_KEY = 'AIzaSyCIbxO6Po6LDAzyMivEXtAB3xNbRrc-etI';
+export const NATIVE_MAPS_KEY = Platform.select({
+  // Application Restricted keys for use in map tab (inlcude only Maps SDK for iOS/Android/Web)
+  ios: 'AIzaSyCrPeqjnAYmHKPBaU8sa0eStuUjbaIX5uw',
+  android: 'AIzaSyA302UKZ4b86kojY0yz4DQos81G2UiqPLE',
+  default: 'AIzaSyCCh_oAlw-DaIkXZTRt-1Z8q-RRX4Rfbo0', 
+});
+
+// API Restricted key for use in GooglePlacesAutocomplete (include Places API, Geocoding API, and Distance Matrix API)
+export const TRIPS_KEY = 'AIzaSyD6TzcrpuoGnxWMV_mmbMnZhVBKxJ-DHj8';
 
 export default function Trips() {
   const [data, setData] = useState(MOCK_TRIP_DATA);
@@ -47,7 +54,9 @@ export default function Trips() {
   const handleAddManualTrip = (details: any) => {
     const newEntry: TripDestination = {
       id: Date.now().toString(),
+      // Use the Place Name if it's a business, otherwise fallback to address
       location_name: details.name || details.formatted_address,
+      address: details.formatted_address,
       location_place_id: details.place_id,
       latitude: details.geometry.location.lat,
       longitude: details.geometry.location.lng,
@@ -195,8 +204,10 @@ export default function Trips() {
                 onPress={(data, details = null) => {
                   if (details) handleAddManualTrip(details);
                 }}
+                debounce ={400}
+                onFail={(error) => console.error("Google Places Error: ", error)}
                 query={{
-                  key: GOOGLE_MAPS_API_KEY,
+                  key: TRIPS_KEY,
                   language: 'en',
                 }}
                 styles={{
@@ -218,6 +229,20 @@ export default function Trips() {
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={styles.label}>Destination Name</Text>
+                  <TextInput 
+                    style={styles.input}
+                    value={editingItem?.location_name || ""}
+                    onChangeText={(text) => setEditingItem(prev => prev ? {...prev, location_name: text} : null)}
+                    placeholder="Enter destination name"
+                  />
+                  <Text style={styles.label}>Address</Text>
+                  <TextInput 
+                    style={[styles.input, { backgroundColor: theme.colors.muted, color: theme.colors.subtext }]}
+                    value={editingItem?.address || "No address provided"}
+                    editable={false}
+                    multiline
+                  />
                   <Text style={styles.label}>Planned Arrival</Text>
                   <View style={styles.pickerContainer}>
                     <Picker
