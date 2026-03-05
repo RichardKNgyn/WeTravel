@@ -12,13 +12,13 @@ import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
 
 export const NATIVE_MAPS_KEY = Platform.select({
   // Application Restricted keys for use in map tab (inlcude only Maps SDK for iOS/Android/Web)
-  ios: 'AIzaSyCrPeqjnAYmHKPBaU8sa0eStuUjbaIX5uw',
-  android: 'AIzaSyA302UKZ4b86kojY0yz4DQos81G2UiqPLE',
-  default: 'AIzaSyCCh_oAlw-DaIkXZTRt-1Z8q-RRX4Rfbo0', 
+  ios: process.env.EXPO_PUBLIC_IOS_MAPS_KEY,
+  android: process.env.EXPO_PUBLIC_ANDROID_MAPS_KEY,
+  default: process.env.EXPO_PUBLIC_WEB_MAPS_KEY, 
 });
 
 // API Restricted key for use in GooglePlacesAutocomplete (include Places API, Geocoding API, and Distance Matrix API)
-export const TRIPS_KEY = 'AIzaSyD6TzcrpuoGnxWMV_mmbMnZhVBKxJ-DHj8';
+export const TRIPS_KEY = process.env.EXPO_PUBLIC_TRIPS_KEY;
 
 export default function Trips() {
   const [data, setData] = useState(MOCK_TRIP_DATA);
