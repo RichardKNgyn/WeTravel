@@ -7,8 +7,8 @@ import PrimaryButton from "../../components/PrimaryButton";
 
 export default function Login() {
   const router = useRouter();
-  const [email, setEmail] = useState("jmph4556@gmail.com");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const onNext = async () => {
