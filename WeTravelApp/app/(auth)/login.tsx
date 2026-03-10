@@ -16,6 +16,11 @@ export default function Login() {
       Alert.alert("Missing fields", "Please enter your email and password.");
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert("Invalid email", "Please enter a valid email address.");
+      return;
+    }
     setLoading(true);
     await new Promise((r) => setTimeout(r, 500));
     setLoading(false);
