@@ -26,6 +26,7 @@ export default function CreatePostScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const isDark = colorScheme === 'dark';
   const { addPost } = usePosts();
+  const { user } = useUser();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -124,7 +125,7 @@ export default function CreatePostScreen() {
       description: description.trim(),
       location: location.trim(),
       images,
-      author: 'You',
+      author: user.displayName || 'You',
       createdAt: new Date().toISOString(),
       likes: 0,
     });
