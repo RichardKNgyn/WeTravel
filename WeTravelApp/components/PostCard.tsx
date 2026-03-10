@@ -1,7 +1,7 @@
 import type { Post } from "@/hooks/use-posts";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Image, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { theme } from "../constants/theme";
 
@@ -9,12 +9,21 @@ export default function PostCard({ post }: { post: Post }) {
   const [liked, setLiked] = useState(false);
   const likes = useMemo(() => post.likes + (liked ? 1 : 0), [post.likes, liked]);
 
+  const sharingRef = useRef(false);
   const handleShare = async () => {
-    const message = `${post.title}${post.location ? ` · ${post.location}` : ""}\n${post.content ?? ""}`;
-    if (Platform.OS === "web" && typeof navigator?.share === "function") {
-      await navigator.share({ title: post.title, text: message });
-    } else {
-      await Share.share({ message });
+    if (sharingRef.current) return;
+    sharingRef.current = true;
+    try {
+      const message = `${post.title}${post.location ? ` · ${post.location}` : ""}\n${post.content ?? ""}`;
+      if (Platform.OS === "web" && typeof navigator?.share === "function") {
+        await navigator.share({ title: post.title, text: message });
+      } else {
+        await Share.share({ message });
+      }
+    } catch {
+      // user cancelled or browser error — ignore
+    } finally {
+      sharingRef.current = false;
     }
   };
 
