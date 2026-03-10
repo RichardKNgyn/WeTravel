@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { theme } from "../../constants/theme";
 import TextField from "../../components/TextField";
@@ -12,8 +12,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const onNext = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing fields", "Please enter your email and password.");
+      return;
+    }
     setLoading(true);
-    // Fake delay to feel real
     await new Promise((r) => setTimeout(r, 500));
     setLoading(false);
     router.replace("/(tabs)/feed");
