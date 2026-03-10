@@ -108,9 +108,8 @@ export default function Search() {
 
       const L = (window as any).L;
       // Disable default zoom control so we can place it at bottom-left
-      const map = L.map(el, { zoomControl: false }).setView([20, 10], 2);
+      const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([20, 10], 2);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
         maxZoom: 18,
       }).addTo(map);
 
