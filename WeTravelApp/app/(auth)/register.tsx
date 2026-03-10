@@ -1,10 +1,12 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, ScrollView, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { theme } from "../../constants/theme";
 import TextField from "../../components/TextField";
 import PrimaryButton from "../../components/PrimaryButton";
 import { useUser } from "../../hooks/use-user";
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Register() {
   const router = useRouter();
@@ -17,15 +19,36 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [firstNameError, setFirstNameError] = useState("");
+  const [lastNameError, setLastNameError] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
+
   const onCreateAccount = async () => {
-    if (!firstName.trim() || !lastName.trim() || !username.trim() || !email.trim() || !password.trim()) {
-      Alert.alert("Missing fields", "Please fill in all required fields.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      Alert.alert("Password mismatch", "Passwords do not match.");
-      return;
-    }
+    let valid = true;
+
+    if (!firstName.trim()) { setFirstNameError("First name is required."); valid = false; } else setFirstNameError("");
+    if (!lastName.trim()) { setLastNameError("Last name is required."); valid = false; } else setLastNameError("");
+    if (!username.trim()) { setUsernameError("Username is required."); valid = false; } else setUsernameError("");
+
+    if (!email.trim()) {
+      setEmailError("Email is required."); valid = false;
+    } else if (!emailRegex.test(email.trim())) {
+      setEmailError("Please enter a valid email address."); valid = false;
+    } else setEmailError("");
+
+    if (!password.trim()) { setPasswordError("Password is required."); valid = false; } else setPasswordError("");
+
+    if (!confirmPassword.trim()) {
+      setConfirmPasswordError("Please confirm your password."); valid = false;
+    } else if (password !== confirmPassword) {
+      setConfirmPasswordError("Passwords do not match."); valid = false;
+    } else setConfirmPasswordError("");
+
+    if (!valid) return;
+
     setLoading(true);
     await new Promise((r) => setTimeout(r, 600));
     setUser({ displayName: `${firstName.trim()} ${lastName.trim()}`, username: username.trim() });
@@ -46,55 +69,61 @@ export default function Register() {
             <View style={{ flex: 1 }}>
               <TextField
                 value={firstName}
-                onChangeText={setFirstName}
+                onChangeText={(t) => { setFirstName(t); setFirstNameError(""); }}
                 placeholder="First Name"
                 autoCapitalize="words"
+                error={firstNameError}
               />
             </View>
             <View style={{ width: theme.spacing.sm }} />
             <View style={{ flex: 1 }}>
               <TextField
                 value={lastName}
-                onChangeText={setLastName}
+                onChangeText={(t) => { setLastName(t); setLastNameError(""); }}
                 placeholder="Last Name"
                 autoCapitalize="words"
+                error={lastNameError}
               />
             </View>
           </View>
 
           <TextField
             value={username}
-            onChangeText={(t) => setUsername(t.replace(/\s/g, ""))}
+            onChangeText={(t) => { setUsername(t.replace(/\s/g, "")); setUsernameError(""); }}
             placeholder="Username"
             autoCapitalize="none"
             style={{ marginTop: theme.spacing.sm }}
+            error={usernameError}
           />
 
           <TextField
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(t) => { setEmail(t); setEmailError(""); }}
             placeholder="Email"
             keyboardType="email-address"
             autoCapitalize="none"
             style={{ marginTop: theme.spacing.sm }}
+            error={emailError}
           />
 
           <TextField
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(t) => { setPassword(t); setPasswordError(""); }}
             placeholder="Password"
             secureTextEntry
             autoCapitalize="none"
             style={{ marginTop: theme.spacing.sm }}
+            error={passwordError}
           />
 
           <TextField
             value={confirmPassword}
-            onChangeText={setConfirmPassword}
+            onChangeText={(t) => { setConfirmPassword(t); setConfirmPasswordError(""); }}
             placeholder="Confirm Password"
             secureTextEntry
             autoCapitalize="none"
             style={{ marginTop: theme.spacing.sm }}
+            error={confirmPasswordError}
           />
 
           <PrimaryButton

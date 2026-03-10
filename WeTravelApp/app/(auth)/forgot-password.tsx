@@ -1,21 +1,29 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { theme } from "../../constants/theme";
 import TextField from "../../components/TextField";
 import PrimaryButton from "../../components/PrimaryButton";
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPassword() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [emailError, setEmailError] = useState("");
 
   const onSend = async () => {
     if (!email.trim()) {
-      Alert.alert("Missing email", "Please enter your email address.");
+      setEmailError("Email is required.");
       return;
     }
+    if (!emailRegex.test(email.trim())) {
+      setEmailError("Please enter a valid email address.");
+      return;
+    }
+    setEmailError("");
     setLoading(true);
     await new Promise((r) => setTimeout(r, 600));
     setLoading(false);
@@ -44,11 +52,12 @@ export default function ForgotPassword() {
 
             <TextField
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(t) => { setEmail(t); setEmailError(""); }}
               placeholder="Email"
               keyboardType="email-address"
               autoCapitalize="none"
               style={{ marginTop: theme.spacing.sm }}
+              error={emailError}
             />
 
             <PrimaryButton
