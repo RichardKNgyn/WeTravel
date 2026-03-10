@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { usePosts } from '@/hooks/use-posts';
+import { useUser } from '@/hooks/use-user';
 
 const MAX_IMAGES = 6;
 
