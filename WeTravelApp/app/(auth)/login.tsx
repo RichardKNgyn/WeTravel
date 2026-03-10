@@ -1,26 +1,42 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { theme } from "../../constants/theme";
 import TextField from "../../components/TextField";
 import PrimaryButton from "../../components/PrimaryButton";
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   const onNext = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Missing fields", "Please enter your email and password.");
-      return;
+    let valid = true;
+
+    if (!email.trim()) {
+      setEmailError("Email is required.");
+      valid = false;
+    } else if (!emailRegex.test(email.trim())) {
+      setEmailError("Please enter a valid email address.");
+      valid = false;
+    } else {
+      setEmailError("");
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      Alert.alert("Invalid email", "Please enter a valid email address.");
-      return;
+
+    if (!password.trim()) {
+      setPasswordError("Password is required.");
+      valid = false;
+    } else {
+      setPasswordError("");
     }
+
+    if (!valid) return;
+
     setLoading(true);
     await new Promise((r) => setTimeout(r, 500));
     setLoading(false);
@@ -37,19 +53,21 @@ export default function Login() {
       <View style={styles.form}>
         <TextField
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(t) => { setEmail(t); setEmailError(""); }}
           placeholder="Email"
           keyboardType="email-address"
           autoCapitalize="none"
+          error={emailError}
         />
 
         <TextField
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(t) => { setPassword(t); setPasswordError(""); }}
           placeholder="Password"
           secureTextEntry
           autoCapitalize="none"
           style={{ marginTop: theme.spacing.sm }}
+          error={passwordError}
         />
 
         <PrimaryButton
