@@ -311,5 +311,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     fontSize: 14,
     color: theme.colors.text,
-  },
+    outlineWidth: 0,
+    outline: 'none',
+    boxShadow: 'none',
+  } as any,
 });
