@@ -86,6 +86,15 @@ export default function Search() {
       link.rel = "stylesheet";
       link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
       document.head.appendChild(link);
+
+      // Ensure full-height layout chain so the map fills the screen
+      const fix = document.createElement("style");
+      fix.id = "wetravel-map-fix";
+      fix.textContent = `
+        html, body { height: 100% !important; margin: 0; }
+        #${MAP_ID} { position: absolute !important; top: 0; left: 0; right: 0; bottom: 0; width: 100% !important; height: 100% !important; }
+      `;
+      document.head.appendChild(fix);
     };
 
     const loadScript = (id: string, src: string): Promise<void> =>
@@ -300,7 +309,7 @@ export default function Search() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg },
   mapWrapper: { flex: 1, position: "relative" } as any,
-  map: { flex: 1 },
+  map: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 } as any,
 
   searchBox: {
     position: "absolute",
