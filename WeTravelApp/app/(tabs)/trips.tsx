@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
+import { useNetwork } from '../../hooks/use-network';
 
 export const NATIVE_MAPS_KEY = Platform.select({
   // Application Restricted keys for use in map tab (inlcude only Maps SDK for iOS/Android/Web)
@@ -21,6 +22,7 @@ export const NATIVE_MAPS_KEY = Platform.select({
 export const TRIPS_KEY = process.env.EXPO_PUBLIC_TRIPS_KEY;
 
 export default function Trips() {
+  const { isOnline } = useNetwork();
   const [data, setData] = useState(MOCK_TRIP_DATA);
   const [editingItem, setEditingItem] = useState<TripDestination | null>(null);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -164,6 +166,11 @@ export default function Trips() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.container}>
+      {!isOnline && (
+        <View style={{ backgroundColor: '#FFC107', padding: 10, alignItems: 'center' }}>
+          <Text style={{ color: '#000', fontWeight: '600' }}>You are offline — showing saved trips</Text>
+        </View>
+      )}
           <Text style={styles.title}>My Trips</Text>
           <Text style={styles.sub}>Hold and drag to reorder. Tap to edit ✈️</Text>
           
