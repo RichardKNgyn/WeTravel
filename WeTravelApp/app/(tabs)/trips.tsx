@@ -10,6 +10,7 @@ import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
 import { useNetwork } from '../../hooks/use-network';
+import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips} from '../../hooks/use-offline-db';
 
 export const NATIVE_MAPS_KEY = Platform.select({
   // Application Restricted keys for use in map tab (inlcude only Maps SDK for iOS/Android/Web)
@@ -23,7 +24,7 @@ export const TRIPS_KEY = process.env.EXPO_PUBLIC_TRIPS_KEY;
 
 export default function Trips() {
   const { isOnline } = useNetwork();
-  const [data, setData] = useState(MOCK_TRIP_DATA);
+  const [data, setData] = useState<TripDestination[]>([]);
   const [editingItem, setEditingItem] = useState<TripDestination | null>(null);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [lastDeleted, setLastDeleted] = useState<{ item: TripDestination; index: number } | null>(null);
@@ -36,6 +37,23 @@ export default function Trips() {
   const [tPeriod, setTPeriod] = useState("AM");
   const [dHour, setDHour] = useState(0);
   const [dMin, setDMin] = useState(0);
+
+  // Initialize DB and load trips from local storage on app start
+  useEffect(() => {
+    const setup = async () => {
+      await initDB();
+      const savedTrips = await getTrips();
+      
+      // If DB is empty, load mock data for the first time
+      if (savedTrips.length === 0 && MOCK_TRIP_DATA.length > 0) {
+        setData(MOCK_TRIP_DATA);
+        await saveAllTrips(MOCK_TRIP_DATA as any);
+      } else {
+        setData(savedTrips as any);
+      }
+    };
+    setup();
+  }, []);
 
   useEffect(() => {
     if (editingItem) {
@@ -53,7 +71,7 @@ export default function Trips() {
     }
   }, [editingItem]);
 
-  const handleAddManualTrip = (details: any) => {
+  const handleAddManualTrip = async (details: any) => {
     const newEntry: TripDestination = {
       id: Date.now().toString(),
       // Use the Place Name if it's a business, otherwise fallback to address
@@ -69,11 +87,13 @@ export default function Trips() {
       duration_hours: null,
     };
 
-    setData([...data, newEntry]);
+    const updatedData = [...data, newEntry];
+    setData(updatedData);
+    await saveTrip(newEntry as any);
     setIsSearchVisible(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const indexToDelete = data.findIndex(item => item.id === id);
     if (indexToDelete === -1) return;
     if (undoTimerRef.current) {
@@ -85,6 +105,8 @@ export default function Trips() {
     const newData = data.filter(item => item.id !== id);
     const updated = newData.map((item, index) => ({ ...item, order_index: index }));
     setData(updated);
+    await deleteTrip(id);
+    await saveAllTrips(updated as any);
     
     setShowUndo(true);
     undoTimerRef.current = setTimeout(() => {
@@ -93,7 +115,7 @@ export default function Trips() {
     }, 4000);
   };
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
     if (!lastDeleted) return;
     if (undoTimerRef.current) {
       clearTimeout(undoTimerRef.current);
@@ -103,12 +125,13 @@ export default function Trips() {
     newData.splice(lastDeleted.index, 0, lastDeleted.item);
     const restored = newData.map((item, index) => ({ ...item, order_index: index }));
     setData(restored);
+    await saveAllTrips(restored as any);
     
     setShowUndo(false);
     setLastDeleted(null);
   };
 
-  const handleUpdateItem = () => {
+  const handleUpdateItem = async () => {
     if (!editingItem) return;
 
     const updatedItem: TripDestination = {
@@ -119,6 +142,7 @@ export default function Trips() {
 
     const updatedData = data.map(item => item.id === updatedItem.id ? updatedItem : item);
     setData(updatedData);
+    await saveTrip(updatedItem as any);
     setEditingItem(null);
   };
 
@@ -176,9 +200,10 @@ export default function Trips() {
           
           <DraggableFlatList
             data={data}
-            onDragEnd={({ data }) => {
+            onDragEnd={ async ({ data }) => {
               const reordered = data.map((item, index) => ({ ...item, order_index: index }));
               setData(reordered);
+              await saveAllTrips(reordered as any);
             }}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}

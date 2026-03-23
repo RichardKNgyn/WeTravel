@@ -4,14 +4,14 @@ export type Trip = {
   id: string;
   location_name: string;
   address: string;
-  planned_time: string;
-  duration_hours: number;
+  planned_time: string | null;
+  duration_hours: number | null;
   note: string;
   location_place_id: string;
   order_index: number;
-  latitude: number;
-  longitude: number;
-  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  status: string | null;
   actual_arrival_time: string | null;
 };
 
@@ -28,14 +28,14 @@ export async function initDB(): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       location_name TEXT NOT NULL,
       address TEXT NOT NULL,
-      planned_time TEXT NOT NULL,
-      duration_hours REAL NOT NULL,
+      planned_time TEXT,
+      duration_hours REAL,
       note TEXT NOT NULL,
       location_place_id TEXT NOT NULL,
       order_index INTEGER NOT NULL,
-      latitude REAL NOT NULL,
-      longitude REAL NOT NULL,
-      status TEXT NOT NULL,
+      latitude REAL,
+      longitude REAL,
+      status TEXT,
       actual_arrival_time TEXT
     );
   `);
@@ -71,4 +71,18 @@ export async function saveTrip(trip: Trip): Promise<void> {
       trip.actual_arrival_time ?? null,
     ]
   );
+}
+
+export async function deleteTrip(id: string): Promise<void> {
+  const db = getDb();
+  await db.runAsync('DELETE FROM trips WHERE id = ?;', [id]);
+}
+
+export async function saveAllTrips(trips: Trip[]): Promise<void> {
+  const db = getDb();
+  await db.withTransactionAsync(async () => {
+    for (const trip of trips) {
+      await saveTrip(trip);
+    }
+  });
 }
