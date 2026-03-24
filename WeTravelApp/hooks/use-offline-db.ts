@@ -23,9 +23,16 @@ export type Itinerary = {
 
 const DB_NAME = 'wetravel.db';
 
-const db = SQLite.openDatabaseSync(DB_NAME);
+let db: SQLite.SQLiteDatabase | null = null;
+
+try {
+  db = SQLite.openDatabaseSync(DB_NAME);
+} catch (e) {
+  console.warn("SQLite not available in this environment:", e);
+}
 
 export async function initDB(): Promise<void> {
+  if (!db) return;
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
   await db.execAsync(`
@@ -68,12 +75,14 @@ export async function initDB(): Promise<void> {
 }
 
 export async function getTrips(): Promise<Trip[]> {
+  if (!db) return [];
   return db.getAllAsync<Trip>(
     'SELECT * FROM trips ORDER BY order_index ASC;'
   );
 }
 
 export async function saveTrip(trip: Trip): Promise<void> {
+  if (!db) return;
   await db.runAsync(
     `INSERT OR REPLACE INTO trips (
       id, location_name, address, planned_time, duration_hours,
@@ -98,14 +107,17 @@ export async function saveTrip(trip: Trip): Promise<void> {
 }
 
 export async function deleteTrip(id: string): Promise<void> {
+  if (!db) return;
   await db.runAsync('DELETE FROM trips WHERE id = ?;', [id]);
 }
 
 export async function clearActiveTrips(): Promise<void> {
+  if (!db) return;
   await db.runAsync('DELETE FROM trips;');
 }
 
 export async function saveAllTrips(trips: Trip[]): Promise<void> {
+  if (!db) return;
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM trips;');
     for (const trip of trips) {
@@ -115,6 +127,7 @@ export async function saveAllTrips(trips: Trip[]): Promise<void> {
 }
 
 export async function saveFullItinerary(name: string, destinations: Trip[]): Promise<void> {
+  if (!db) return;
   const itineraryId = Date.now().toString();
   
   await db.withTransactionAsync(async () => {
@@ -145,13 +158,16 @@ export async function saveFullItinerary(name: string, destinations: Trip[]): Pro
 }
 
 export async function getItineraries(): Promise<Itinerary[]> {
+  if (!db) return [];
   return db.getAllAsync<Itinerary>('SELECT * FROM itineraries ORDER BY created_at DESC;');
 }
 
 export async function getSavedDestinations(itineraryId: string): Promise<Trip[]> {
+  if (!db) return [];
   return db.getAllAsync<Trip>('SELECT * FROM saved_destinations WHERE itinerary_id = ? ORDER BY order_index ASC;', [itineraryId]);
 }
 
 export async function deleteFullItinerary(id: string): Promise<void> {
+  if (!db) return;
   await db.runAsync('DELETE FROM itineraries WHERE id = ?;', [id]);
 }

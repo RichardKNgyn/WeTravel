@@ -280,8 +280,8 @@ export default function Search() {
                       </View>
 
                       {/* Post body */}
-                      {post.content ? (
-                        <Text style={styles.postContent}>{post.content}</Text>
+                      {post.description ? (
+                        <Text style={styles.postContent}>{post.description}</Text>
                       ) : null}
 
                       {/* Comments */}
@@ -289,7 +289,7 @@ export default function Search() {
                         <View style={styles.commentsSection}>
                           {post.comments.map((c, i) => (
                             <View key={i} style={styles.commentRow}>
-                              <Text style={styles.commentAuthor}>{c.author}</Text>
+                              <Text style={styles.commentAuthor}>{c.user}</Text>
                               <Text style={styles.commentText}>{c.text}</Text>
                             </View>
                           ))}
