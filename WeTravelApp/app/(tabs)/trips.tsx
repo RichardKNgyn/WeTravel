@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform, Alert } from "react-native";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
@@ -10,7 +10,7 @@ import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
 import { useNetwork } from '../../hooks/use-network';
-import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips} from '../../hooks/use-offline-db';
+import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips, saveFullItinerary, getItineraries, getSavedDestinations, deleteFullItinerary, Itinerary, clearActiveTrips} from '../../hooks/use-offline-db';
 
 export const NATIVE_MAPS_KEY = Platform.select({
   // Application Restricted keys for use in map tab (inlcude only Maps SDK for iOS/Android/Web)
@@ -30,6 +30,12 @@ export default function Trips() {
   const [lastDeleted, setLastDeleted] = useState<{ item: TripDestination; index: number } | null>(null);
   const [showUndo, setShowUndo] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isUnsaved, setIsUnsaved] = useState(false);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [loadModalVisible, setLoadModalVisible] = useState(false);
+  const [conflictModalVisible, setConflictModalVisible] = useState(false);
+  const [itineraryName, setItineraryName] = useState("");
+  const [savedItineraries, setSavedItineraries] = useState<Itinerary[]>([]);
 
   // States for time and duration pickers in the edit modal
   const [tHour, setTHour] = useState("12");
@@ -89,6 +95,7 @@ export default function Trips() {
 
     const updatedData = [...data, newEntry];
     setData(updatedData);
+    setIsUnsaved(true);
     await saveTrip(newEntry as any);
     setIsSearchVisible(false);
   };
@@ -105,6 +112,7 @@ export default function Trips() {
     const newData = data.filter(item => item.id !== id);
     const updated = newData.map((item, index) => ({ ...item, order_index: index }));
     setData(updated);
+    setIsUnsaved(true);
     await deleteTrip(id);
     await saveAllTrips(updated as any);
     
@@ -142,8 +150,66 @@ export default function Trips() {
 
     const updatedData = data.map(item => item.id === updatedItem.id ? updatedItem : item);
     setData(updatedData);
+    setIsUnsaved(true);
     await saveTrip(updatedItem as any);
     setEditingItem(null);
+  };
+
+  const handleSaveProcess = async () => {
+    if (data.length === 0) return;
+    try {
+      await saveFullItinerary(itineraryName, data as any);
+      setIsUnsaved(false);
+      setSaveModalVisible(false);
+      setItineraryName("");
+      alert("Trip Saved Successfully!");
+    } catch (e) {
+      alert("Name already exists. Please choose another.");
+    }
+  };
+
+  const openLoadManager = async () => {
+    if (isUnsaved && data.length > 0) {
+      setConflictModalVisible(true);
+    } else {
+      const list = await getItineraries();
+      setSavedItineraries(list);
+      setLoadModalVisible(true);
+    }
+  };
+
+  const performLoad = async (id: string) => {
+    const loadedDestinations = await getSavedDestinations(id);
+    await clearActiveTrips();
+    await saveAllTrips(loadedDestinations as any);
+    setData(loadedDestinations as any);
+    setIsUnsaved(false);
+    setLoadModalVisible(false);
+  };
+
+  const handleDeleteItinerary = async (id: string) => {
+    Alert.alert(
+      "Delete Saved Trip",
+      "Are you sure you want to permanently delete this saved itinerary?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            await deleteFullItinerary(id);
+            const list = await getItineraries();
+            setSavedItineraries(list);
+          } 
+        }
+      ]
+    );
+  };
+
+  const handleClearActiveTrip = async () => {
+    setData([]);
+    setIsUnsaved(false);
+    await clearActiveTrips();
   };
 
   const renderItem = ({ item, drag, isActive }: RenderItemParams<TripDestination>) => {
@@ -190,11 +256,11 @@ export default function Trips() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.container}>
-      {!isOnline && (
-        <View style={{ backgroundColor: '#FFC107', padding: 10, alignItems: 'center' }}>
-          <Text style={{ color: '#000', fontWeight: '600' }}>You are offline — showing saved trips</Text>
-        </View>
-      )}
+          {!isOnline && (
+            <View style={{ backgroundColor: '#FFC107', padding: 10, alignItems: 'center' }}>
+              <Text style={{ color: '#000', fontWeight: '600' }}>You are offline — showing saved trips</Text>
+            </View>
+          )}
           <Text style={styles.title}>My Trips</Text>
           <Text style={styles.sub}>Hold and drag to reorder. Tap to edit ✈️</Text>
           
@@ -203,13 +269,32 @@ export default function Trips() {
             onDragEnd={ async ({ data }) => {
               const reordered = data.map((item, index) => ({ ...item, order_index: index }));
               setData(reordered);
+              setIsUnsaved(true);
               await saveAllTrips(reordered as any);
             }}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             ListFooterComponent={renderFooter}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
           />
+
+          <View style={styles.footerBar}>
+            <TouchableOpacity 
+              style={[styles.footerBtn, data.length === 0 && styles.btnDisabled]}
+              disabled={data.length === 0}
+              onPress={() => setSaveModalVisible(true)}
+            >
+              <Ionicons name="save-outline" size={20} color={data.length === 0 ? "#999" : theme.colors.primary} />
+              <Text style={[styles.footerBtnText, data.length === 0 && {color: "#999"}]}>Save Trip</Text>
+            </TouchableOpacity>
+
+            <View style={styles.footerDivider} />
+
+            <TouchableOpacity style={styles.footerBtn} onPress={openLoadManager}>
+              <Ionicons name="folder-open-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.footerBtnText}>Load Trip</Text>
+            </TouchableOpacity>
+          </View>
 
           {showUndo && (
             <View style={styles.undoContainer}>
@@ -335,6 +420,92 @@ export default function Trips() {
               </View>
             </View>
           </Modal>
+
+          <Modal visible={saveModalVisible} transparent animationType="fade">
+            <View style={styles.overlay}>
+              <View style={styles.alertBox}>
+                <Text style={styles.alertTitle}>Name your trip</Text>
+                <TextInput 
+                  style={[styles.input, styles.modalInput]} 
+                  placeholder="e.g. Summer in Japan" 
+                  value={itineraryName}
+                  onChangeText={setItineraryName}
+                />
+                <PrimaryButton title="Confirm Save" onPress={handleSaveProcess} style={styles.modalBtn} />
+                <TouchableOpacity onPress={() => setSaveModalVisible(false)}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          <Modal visible={loadModalVisible} animationType="slide" transparent={true}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Load Saved Trip</Text>
+                  <TouchableOpacity onPress={() => setLoadModalVisible(false)}>
+                    <Ionicons name="close" size={24} color={theme.colors.text} />
+                  </TouchableOpacity>
+                </View>
+
+                {savedItineraries.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="folder-open-outline" size={48} color={theme.colors.border} />
+                    <Text style={styles.emptyText}>No saved trips found.</Text>
+                  </View>
+                ) : (
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {savedItineraries.map((itinerary) => (
+                      <View key={itinerary.id} style={styles.itineraryCardContainer}>
+                        <TouchableOpacity 
+                          style={styles.itineraryCard}
+                          onPress={() => performLoad(itinerary.id)}
+                        >
+                          <View style={styles.itineraryInfo}>
+                            <Text style={styles.itineraryNameText}>{itinerary.name}</Text>
+                            <Text style={styles.itineraryDateText}>
+                              {new Date(itinerary.created_at).toLocaleDateString()}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={20} color={theme.colors.subtext} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleDeleteItinerary(itinerary.id)}
+                          style={styles.itineraryDeleteBtn}
+                        >
+                          <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+            </View>
+          </Modal>
+
+          <Modal visible={conflictModalVisible} transparent animationType="fade">
+            <View style={styles.overlay}>
+              <View style={styles.alertBox}>
+                <Text style={styles.alertTitle}>Unsaved Changes</Text>
+                <Text style={styles.alertSub}>Would you like to save your current trip before loading a new one?</Text>
+                <PrimaryButton title="Save Current First" onPress={() => {
+                  setConflictModalVisible(false);
+                  setSaveModalVisible(true);
+                }} />
+                <TouchableOpacity onPress={async () => {
+                  setConflictModalVisible(false);
+                  await handleClearActiveTrip();
+                  const list = await getItineraries();
+                  setSavedItineraries(list);
+                  setLoadModalVisible(true);
+                }}>
+                  <Text style={styles.discardText}>Discard and Continue</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       </SafeAreaView>
     </GestureHandlerRootView>
@@ -437,7 +608,7 @@ const styles = StyleSheet.create({
   },
   undoContainer: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 85,
     left: 20,
     right: 20,
     backgroundColor: '#323232',
@@ -452,6 +623,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
+    zIndex: 999,
   },
   undoText: {
     color: '#FFFFFF',
@@ -487,5 +659,118 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 16,
     backgroundColor: 'transparent',
+  },
+  footerBar: {
+    position: 'absolute',
+    bottom: 10,
+    left: 20,
+    right: 20,
+    height: 60,
+    backgroundColor: '#FFF',
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  footerBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  footerBtnText: {
+    marginLeft: 8,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  footerDivider: {
+    width: 1,
+    height: '60%',
+    backgroundColor: theme.colors.border,
+  },
+  btnDisabled: {
+    opacity: 0.5,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 30,
+  },
+  alertBox: {
+    backgroundColor: '#FFF',
+    borderRadius: theme.radius.lg,
+    padding: 30,
+    alignItems: 'center',
+    width: '80%',
+    alignSelf: 'center',
+  },
+  alertTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20, color: theme.colors.text },
+  modalInput: {
+    width: '100%',
+    marginBottom: 25,
+  },
+  modalBtn: {
+    width: '70%',
+    height: 44,
+    marginBottom: 10,
+  },
+  alertSub: { textAlign: 'center', color: theme.colors.subtext, marginBottom: 20 },
+  discardText: { color: theme.colors.error, fontWeight: '700', marginTop: 15 },
+  cancelText: { 
+    color: theme.colors.subtext, 
+    fontWeight: '600',
+    padding: 10,
+    marginTop: 5,
+  },
+
+  itineraryCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: theme.colors.muted,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  itineraryInfo: {
+    flex: 1,
+  },
+  itineraryNameText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  itineraryDateText: {
+    fontSize: 12,
+    color: theme.colors.subtext,
+    marginTop: 4,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 50,
+  },
+  emptyText: {
+    marginTop: 10,
+    color: theme.colors.subtext,
+    fontSize: 16,
+  },
+  itineraryCardContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  itineraryDeleteBtn: {
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

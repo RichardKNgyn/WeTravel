@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
+const tintColorLight = '#e07b54';
 const tintColorDark = '#fff';
 
 export const Colors = {
@@ -51,7 +51,7 @@ export const theme = {
     muted: '#F5F5F5',
     background: '#FFFFFF',
     bg: '#FFFFFF',
-    primary: '#0a7ea4',
+    primary: '#e07b54',
     white: '#FFFFFF',
     error: '#e53935',
   },
