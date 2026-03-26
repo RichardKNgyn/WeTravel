@@ -1,30 +1,10 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import { theme } from "../../constants/theme";
-import PrimaryButton from "../../components/PrimaryButton";
+import { useEffect } from 'react';
+import { router } from 'expo-router';
 
 export default function Create() {
-  return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Create</Text>
-        <Text style={styles.sub}>Upload / post flow goes here 📸</Text>
+  useEffect(() => {
+    router.replace('/create-post');
+  }, []);
 
-        <PrimaryButton
-          title="Add a post"
-          onPress={() => router.push('/create-post')}
-          style={{ marginTop: theme.spacing.lg }}
-        />
-      </View>
-    </SafeAreaView>
-  );
+  return null;
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.colors.bg },
-  container: { flex: 1, padding: theme.spacing.lg },
-  title: { fontSize: 22, fontWeight: "900", color: theme.colors.text },
-  sub: { marginTop: 10, color: theme.colors.subtext, fontWeight: "700" },
-});

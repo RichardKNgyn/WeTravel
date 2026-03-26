@@ -3,6 +3,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import React from 'react';
+import { View } from 'react-native';
 
 const ACCENT = '#e07b54';
 
@@ -54,9 +55,19 @@ export default function TabLayout() {
       <Tabs.Screen
         name="create"
         options={{
-          title: 'Create',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="add-circle-outline" size={24} color={color} />
+          title: '',
+          tabBarIcon: () => (
+            <View style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: ACCENT,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 8,
+            }}>
+              <Ionicons name="add" size={28} color="#fff" />
+            </View>
           ),
         }}
         listeners={{
