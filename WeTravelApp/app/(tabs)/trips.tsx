@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform, Alert } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform } from "react-native";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { SharedValue } from 'react-native-reanimated';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { SafeAreaView } from "react-native-safe-area-context";
 import PrimaryButton from "../../components/PrimaryButton";
@@ -13,7 +15,7 @@ import { useNetwork } from '../../hooks/use-network';
 import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips, saveFullItinerary, getItineraries, getSavedDestinations, deleteFullItinerary, Itinerary, clearActiveTrips} from '../../hooks/use-offline-db';
 
 export const NATIVE_MAPS_KEY = Platform.select({
-  // Application Restricted keys for use in map tab (inlcude only Maps SDK for iOS/Android/Web)
+  // Application Restricted keys for use in map tab (include only Maps SDK for iOS/Android/Web)
   ios: process.env.EXPO_PUBLIC_IOS_MAPS_KEY,
   android: process.env.EXPO_PUBLIC_ANDROID_MAPS_KEY,
   default: process.env.EXPO_PUBLIC_WEB_MAPS_KEY, 
@@ -36,8 +38,16 @@ export default function Trips() {
   const [conflictModalVisible, setConflictModalVisible] = useState(false);
   const [itineraryName, setItineraryName] = useState("");
   const [savedItineraries, setSavedItineraries] = useState<Itinerary[]>([]);
+  const [confirmReplaceVisible, setConfirmReplaceVisible] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [webQuery, setWebQuery] = useState("");
+  const [webResults, setWebResults] = useState<any[]>([]);
+  const swipeableRefs = useRef(new Map<string, any>()).current;
+  const currentlyOpenId = useRef<string | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // States for time and duration pickers in the edit modal
   const [tHour, setTHour] = useState("12");
   const [tMin, setTMin] = useState("00");
   const [tPeriod, setTPeriod] = useState("AM");
@@ -52,7 +62,7 @@ export default function Trips() {
       
       // If DB is empty, load mock data for the first time
       if (savedTrips.length === 0 && MOCK_TRIP_DATA.length > 0) {
-        setData(MOCK_TRIP_DATA);
+        setData(MOCK_TRIP_DATA as any);
         await saveAllTrips(MOCK_TRIP_DATA as any);
       } else {
         setData(savedTrips as any);
@@ -77,6 +87,14 @@ export default function Trips() {
     }
   }, [editingItem]);
 
+  const closeAnyOpenSwipeable = () => {
+    if (currentlyOpenId.current) {
+      const node = swipeableRefs.get(currentlyOpenId.current);
+      if (node) node.close();
+      currentlyOpenId.current = null;
+    }
+  };
+
   const handleAddManualTrip = async (details: any) => {
     const newEntry: TripDestination = {
       id: Date.now().toString(),
@@ -84,8 +102,8 @@ export default function Trips() {
       location_name: details.name || details.formatted_address,
       address: details.formatted_address,
       location_place_id: details.place_id,
-      latitude: details.geometry.location.lat,
-      longitude: details.geometry.location.lng,
+      latitude: details.geometry?.location?.lat || 0,
+      longitude: details.geometry?.location?.lng || 0,
       order_index: data.length,
       status: 'Pending',
       note: "",
@@ -101,6 +119,7 @@ export default function Trips() {
   };
 
   const handleDelete = async (id: string) => {
+    closeAnyOpenSwipeable();
     const indexToDelete = data.findIndex(item => item.id === id);
     if (indexToDelete === -1) return;
     if (undoTimerRef.current) {
@@ -155,17 +174,44 @@ export default function Trips() {
     setEditingItem(null);
   };
 
-  const handleSaveProcess = async () => {
+  const handleSaveInitiate = async () => {
+    if (!itineraryName.trim()) return;
+
+    const list = await getItineraries();
+    setSavedItineraries(list);
+
+    const existing = list.find(it => it.name.trim().toLowerCase() === itineraryName.trim().toLowerCase());
+    
+    if (existing) {
+      setSaveModalVisible(false);
+      setConfirmReplaceVisible(true);
+    } else {
+      await executeSave();
+    }
+  };
+
+  const executeSave = async () => {
     if (data.length === 0) return;
     try {
-      await saveFullItinerary(itineraryName, data as any);
+      await saveFullItinerary(itineraryName.trim(), data as any);
       setIsUnsaved(false);
       setSaveModalVisible(false);
+      setConfirmReplaceVisible(false);
       setItineraryName("");
-      alert("Trip Saved Successfully!");
-    } catch (e) {
-      alert("Name already exists. Please choose another.");
+      const list = await getItineraries();
+      setSavedItineraries(list);
+      setSuccessVisible(true);
+    } catch (e: any) {
+      alert("Save Failed: " + e.message);
     }
+  };
+
+  const handleReplace = async () => {
+    const existing = savedItineraries.find(it => it.name.trim().toLowerCase() === itineraryName.trim().toLowerCase());
+    if (existing) {
+      await deleteFullItinerary(existing.id);
+    }
+    await executeSave();
   };
 
   const openLoadManager = async () => {
@@ -187,23 +233,19 @@ export default function Trips() {
     setLoadModalVisible(false);
   };
 
-  const handleDeleteItinerary = async (id: string) => {
-    Alert.alert(
-      "Delete Saved Trip",
-      "Are you sure you want to permanently delete this saved itinerary?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
-          onPress: async () => {
-            await deleteFullItinerary(id);
-            const list = await getItineraries();
-            setSavedItineraries(list);
-          } 
-        }
-      ]
-    );
+  const handleDeleteItinerary = (id: string) => {
+    setDeletingId(id);
+    setConfirmDeleteVisible(true);
+  };
+
+  const executeDelete = async () => {
+    if (deletingId) {
+      await deleteFullItinerary(deletingId);
+      const list = await getItineraries();
+      setSavedItineraries(list);
+    }
+    setConfirmDeleteVisible(false);
+    setDeletingId(null);
   };
 
   const handleClearActiveTrip = async () => {
@@ -212,14 +254,38 @@ export default function Trips() {
     await clearActiveTrips();
   };
 
+  const renderRightActions = (prog: SharedValue<number>, drag: SharedValue<number>, swp: any, id: string) => (
+    <TouchableOpacity style={styles.swipeDeleteAction} onPress={() => { swp.close(); handleDelete(id); }}>
+      <Ionicons name="trash" size={28} color="#FFF" />
+    </TouchableOpacity>
+  );
+
+  const renderWebActions = (item: TripDestination) => (
+    <View style={{ flexDirection: 'row', gap: 15, paddingHorizontal: 10 }}>
+      <TouchableOpacity onPress={() => setEditingItem(item)} style={{ padding: 5 }}>
+        <Ionicons name="create-outline" size={22} color={theme.colors.primary} />
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ padding: 5 }}>
+        <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderItem = ({ item, drag, isActive }: RenderItemParams<TripDestination>) => {
-    return (
+    const isWeb = Platform.OS === 'web';
+
+    const CardContent = (
       <ScaleDecorator>
         <TouchableOpacity
-          onLongPress={drag}
-          onPress={() => setEditingItem(item)}
+          onPressIn={() => { closeAnyOpenSwipeable(); if (isWeb) drag(); }}
+          onLongPress={isWeb ? undefined : drag}
+          onPress={() => { closeAnyOpenSwipeable(); if (!isWeb) setEditingItem(item); }}
           disabled={isActive}
-          style={[styles.card, { backgroundColor: isActive ? theme.colors.muted : theme.colors.white }]}
+          style={[
+            styles.card, 
+            { backgroundColor: isActive ? theme.colors.muted : theme.colors.white },
+            isWeb && ({ cursor: isActive ? 'grabbing' : 'grab' } as any)
+          ]}
         >
           <View style={styles.dragHandle}>
             <Ionicons name="menu-outline" size={24} color={theme.colors.subtext} />
@@ -233,11 +299,37 @@ export default function Trips() {
             </Text>
           </View>
 
-          <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteButton}>
-            <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
-          </TouchableOpacity>
+          {isWeb ? renderWebActions(item) : null}
         </TouchableOpacity>
       </ScaleDecorator>
+    );
+
+    if (isWeb) {
+      return <View style={{ marginBottom: theme.spacing.sm }}>{CardContent}</View>;
+    }
+
+    return (
+      <View style={{ marginBottom: theme.spacing.sm }}>
+        <ReanimatedSwipeable
+          ref={((ref: any) => {
+            if (ref) swipeableRefs.set(item.id, ref);
+            else swipeableRefs.delete(item.id);
+          }) as any}
+          onSwipeableWillOpen={() => {
+            if (currentlyOpenId.current && currentlyOpenId.current !== item.id) {
+              const previousNode = swipeableRefs.get(currentlyOpenId.current);
+              if (previousNode) previousNode.close();
+            }
+            currentlyOpenId.current = item.id;
+          }}
+          renderRightActions={(p, d, s) => renderRightActions(p, d, s, item.id)}
+          friction={2}
+          rightThreshold={40}
+          overshootRight={false}
+        >
+          {CardContent}
+        </ReanimatedSwipeable>
+      </View>
     );
   };
 
@@ -255,23 +347,25 @@ export default function Trips() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.container}>
+        <View style={styles.container} onTouchStart={closeAnyOpenSwipeable}>
           {!isOnline && (
             <View style={{ backgroundColor: '#FFC107', padding: 10, alignItems: 'center' }}>
               <Text style={{ color: '#000', fontWeight: '600' }}>You are offline — showing saved trips</Text>
             </View>
           )}
           <Text style={styles.title}>My Trips</Text>
-          <Text style={styles.sub}>Hold and drag to reorder. Tap to edit ✈️</Text>
+          <Text style={styles.sub}>Hold and drag to reorder. Tap to edit, Swipe to delete.</Text>
           
           <DraggableFlatList
             data={data}
+            onScrollBeginDrag={closeAnyOpenSwipeable}
             onDragEnd={ async ({ data }) => {
               const reordered = data.map((item, index) => ({ ...item, order_index: index }));
               setData(reordered);
               setIsUnsaved(true);
               await saveAllTrips(reordered as any);
             }}
+            activationDistance={Platform.OS === 'web' ? 1 : undefined}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             ListFooterComponent={renderFooter}
@@ -315,23 +409,85 @@ export default function Trips() {
                 <View style={{ width: 28 }} />
               </View>
               
-              <GooglePlacesAutocomplete
-                placeholder='Search for a place...'
-                fetchDetails={true}
-                onPress={(data, details = null) => {
-                  if (details) handleAddManualTrip(details);
-                }}
-                debounce ={400}
-                onFail={(error) => console.error("Google Places Error: ", error)}
-                query={{
-                  key: TRIPS_KEY,
-                  language: 'en',
-                }}
-                styles={{
-                  textInputContainer: styles.searchInputContainer,
-                  textInput: styles.searchInput,
-                }}
-              />
+              {Platform.OS === 'web' ? (
+                <View style={{ flex: 1, padding: 15 }}>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.colors.white, marginBottom: 15 }]}
+                    placeholder="Search for a place..."
+                    value={webQuery}
+                    onChangeText={(text) => {
+                      setWebQuery(text);
+                      
+                      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                      
+                      if (text.length < 3) {
+                        setWebResults([]);
+                        return;
+                      }
+
+                      searchTimeoutRef.current = setTimeout(async () => {
+                        try {
+                          const targetUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${TRIPS_KEY}`;
+                          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+                          if (!res.ok) throw new Error("Network error");
+                          const json = await res.json();
+                          setWebResults(json.predictions || []);
+                        } catch (e) { 
+                          console.error("Places API Error:", e); 
+                        }
+                      }, 600);
+                    }}
+                  />
+                  <ScrollView style={{ flex: 1 }}>
+                    {webResults.map((place) => (
+                      <TouchableOpacity
+                        key={place.place_id}
+                        style={{ padding: 15, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: '#fff' }}
+                        onPress={async () => {
+                          try {
+                            const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&key=${TRIPS_KEY}`;
+                            const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(detailsUrl)}`);
+                            if (!res.ok) throw new Error("Failed to fetch place details");
+                            
+                            const json = await res.json();
+                            if (json.result) {
+                              handleAddManualTrip(json.result);
+                              setWebQuery("");
+                              setWebResults([]);
+                            } else {
+                              alert("Could not load place details.");
+                            }
+                          } catch (e) {
+                            console.error("Details Fetch Error:", e);
+                            alert("Failed to load details. The proxy might be busy, please try again.");
+                          }
+                        }}
+                      >
+                        <Text style={{ fontWeight: 'bold' }}>{place.structured_formatting?.main_text || place.description}</Text>
+                        <Text style={{ color: 'gray', fontSize: 12 }}>{place.structured_formatting?.secondary_text || ""}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : (
+                <GooglePlacesAutocomplete
+                  placeholder='Search for a place...'
+                  fetchDetails={true}
+                  onPress={(data, details = null) => {
+                    if (details) handleAddManualTrip(details);
+                  }}
+                  debounce={400}
+                  onFail={(error) => console.error("Google Places Error: ", error)}
+                  query={{
+                    key: TRIPS_KEY,
+                    language: 'en',
+                  }}
+                  styles={{
+                    textInputContainer: styles.searchInputContainer,
+                    textInput: styles.searchInput,
+                  }}
+                />
+              )}
             </SafeAreaView>
           </Modal>
 
@@ -431,10 +587,37 @@ export default function Trips() {
                   value={itineraryName}
                   onChangeText={setItineraryName}
                 />
-                <PrimaryButton title="Confirm Save" onPress={handleSaveProcess} style={styles.modalBtn} />
+                <PrimaryButton title="Confirm Save" onPress={handleSaveInitiate} style={styles.modalBtn} />
                 <TouchableOpacity onPress={() => setSaveModalVisible(false)}>
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          <Modal visible={confirmReplaceVisible} transparent animationType="fade">
+            <View style={styles.overlay}>
+              <View style={styles.alertBox}>
+                <Text style={styles.alertTitle}>Trip Already Exists</Text>
+                <Text style={styles.alertSub}>A trip named "{itineraryName}" already exists. Do you want to replace it?</Text>
+                <PrimaryButton title="Replace Trip" onPress={handleReplace} style={styles.modalBtn} />
+                <TouchableOpacity onPress={() => {
+                  setConfirmReplaceVisible(false);
+                  setSaveModalVisible(true);
+                }}>
+                  <Text style={styles.cancelText}>Cancel & Rename</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
+          <Modal visible={successVisible} transparent animationType="fade">
+            <View style={styles.overlay}>
+              <View style={styles.alertBox}>
+                <Ionicons name="checkmark-circle" size={54} color={theme.colors.primary} style={{ marginBottom: 10 }} />
+                <Text style={styles.alertTitle}>Success</Text>
+                <Text style={styles.alertSub}>Your trip has been saved successfully!</Text>
+                <PrimaryButton title="Done" onPress={() => setSuccessVisible(false)} style={styles.modalBtn} />
               </View>
             </View>
           </Modal>
@@ -485,6 +668,25 @@ export default function Trips() {
             </View>
           </Modal>
 
+          <Modal visible={confirmDeleteVisible} transparent animationType="fade">
+            <View style={styles.overlay}>
+              <View style={styles.alertBox}>
+                <Ionicons name="warning" size={48} color={theme.colors.error} style={{ marginBottom: 10 }} />
+                <Text style={styles.alertTitle}>Delete Saved Trip</Text>
+                <Text style={styles.alertSub}>Are you sure you want to permanently delete this saved itinerary? This action cannot be undone.</Text>
+                <TouchableOpacity 
+                  style={[styles.customActionBtn, { backgroundColor: theme.colors.error }]} 
+                  onPress={executeDelete}
+                >
+                  <Text style={styles.customActionBtnText}>Delete Permanently</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setConfirmDeleteVisible(false)}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
           <Modal visible={conflictModalVisible} transparent animationType="fade">
             <View style={styles.overlay}>
               <View style={styles.alertBox}>
@@ -493,7 +695,7 @@ export default function Trips() {
                 <PrimaryButton title="Save Current First" onPress={() => {
                   setConflictModalVisible(false);
                   setSaveModalVisible(true);
-                }} />
+                }} style={styles.modalBtn} />
                 <TouchableOpacity onPress={async () => {
                   setConflictModalVisible(false);
                   await handleClearActiveTrip();
@@ -523,7 +725,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: theme.radius.md,
     padding: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
     borderLeftWidth: 5,
     borderLeftColor: theme.colors.primary,
     elevation: 4,
@@ -531,6 +732,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
   },
   addCard: {
     flexDirection: "row",
@@ -557,8 +759,15 @@ const styles = StyleSheet.create({
   },
   dragHandle: { marginRight: 12 },
   details: { flex: 1 },
-  locationName: { fontSize: 16, fontWeight: "700", color: theme.colors.text },
-  time: { fontSize: 12, color: theme.colors.primary, fontWeight: "600" },
+  locationName: { 
+    fontSize: 16, 
+    fontWeight: "700", 
+    color: theme.colors.text 
+  },
+  time: { 
+    fontSize: 12, 
+    color: theme.colors.primary, 
+    fontWeight: "600" },
   deleteButton: { padding: 8 },
   modalOverlay: {
     flex: 1,
@@ -708,28 +917,54 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     padding: 30,
     alignItems: 'center',
-    width: '80%',
+    width: '85%',
     alignSelf: 'center',
   },
-  alertTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20, color: theme.colors.text },
+  alertTitle: { 
+    fontSize: 18, 
+    fontWeight: '900', 
+    marginBottom: 15, 
+    color: theme.colors.text 
+  },
   modalInput: {
     width: '100%',
     marginBottom: 25,
   },
   modalBtn: {
-    width: '70%',
+    width: '100%',
     height: 44,
     marginBottom: 10,
   },
-  alertSub: { textAlign: 'center', color: theme.colors.subtext, marginBottom: 20 },
-  discardText: { color: theme.colors.error, fontWeight: '700', marginTop: 15 },
+  customActionBtn: {
+    width: '100%',
+    height: 44,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  customActionBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  alertSub: { 
+    textAlign: 'center', 
+    color: theme.colors.subtext, 
+    marginBottom: 20, 
+    lineHeight: 20 
+  },
+  discardText: { 
+    color: theme.colors.error, 
+    fontWeight: '700', 
+    marginTop: 15 
+  },
   cancelText: { 
     color: theme.colors.subtext, 
     fontWeight: '600',
     padding: 10,
     marginTop: 5,
   },
-
   itineraryCard: {
     flex: 1,
     flexDirection: 'row',
@@ -773,4 +1008,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  swipeDeleteAction: {
+    backgroundColor: theme.colors.error,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    width: 79,
+    borderRadius: theme.radius.md,
+    paddingRight: 25,
+  }
 });

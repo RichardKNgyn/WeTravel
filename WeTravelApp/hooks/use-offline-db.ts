@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 export type Trip = {
   id: string;
@@ -25,13 +26,16 @@ const DB_NAME = 'wetravel.db';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
-try {
-  db = SQLite.openDatabaseSync(DB_NAME);
-} catch (e) {
-  console.warn("SQLite not available in this environment:", e);
+if (Platform.OS !== 'web') {
+  try {
+    db = SQLite.openDatabaseSync(DB_NAME);
+  } catch (e) {
+    console.warn("SQLite not available in this environment:", e);
+  }
 }
 
 export async function initDB(): Promise<void> {
+  if (Platform.OS === 'web') return;
   if (!db) return;
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
@@ -75,6 +79,7 @@ export async function initDB(): Promise<void> {
 }
 
 export async function getTrips(): Promise<Trip[]> {
+  if (Platform.OS === 'web') return JSON.parse(localStorage.getItem('active_trips') || '[]');
   if (!db) return [];
   return db.getAllAsync<Trip>(
     'SELECT * FROM trips ORDER BY order_index ASC;'
@@ -82,6 +87,14 @@ export async function getTrips(): Promise<Trip[]> {
 }
 
 export async function saveTrip(trip: Trip): Promise<void> {
+  if (Platform.OS === 'web') {
+    const trips = await getTrips();
+    const existingIndex = trips.findIndex(t => t.id === trip.id);
+    if (existingIndex >= 0) trips[existingIndex] = trip;
+    else trips.push(trip);
+    localStorage.setItem('active_trips', JSON.stringify(trips));
+    return;
+  }
   if (!db) return;
   await db.runAsync(
     `INSERT OR REPLACE INTO trips (
@@ -91,13 +104,13 @@ export async function saveTrip(trip: Trip): Promise<void> {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       trip.id,
-      trip.location_name,
-      trip.address,
+      trip.location_name || "",
+      trip.address || "",
       trip.planned_time ?? null,
       trip.duration_hours ?? null,
-      trip.note,
-      trip.location_place_id,
-      trip.order_index,
+      trip.note || "",
+      trip.location_place_id || "",
+      trip.order_index ?? 0,
       trip.latitude ?? null,
       trip.longitude ?? null,
       trip.status ?? null,
@@ -107,67 +120,94 @@ export async function saveTrip(trip: Trip): Promise<void> {
 }
 
 export async function deleteTrip(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const trips = await getTrips();
+    localStorage.setItem('active_trips', JSON.stringify(trips.filter(t => t.id !== id)));
+    return;
+  }
   if (!db) return;
   await db.runAsync('DELETE FROM trips WHERE id = ?;', [id]);
 }
 
 export async function clearActiveTrips(): Promise<void> {
+  if (Platform.OS === 'web') return localStorage.removeItem('active_trips');
   if (!db) return;
   await db.runAsync('DELETE FROM trips;');
 }
 
 export async function saveAllTrips(trips: Trip[]): Promise<void> {
+  if (Platform.OS === 'web') return localStorage.setItem('active_trips', JSON.stringify(trips));
   if (!db) return;
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM trips;');
-    for (const trip of trips) {
-      await saveTrip(trip);
-    }
-  });
+  await db.runAsync('DELETE FROM trips;');
+  for (const trip of trips) await saveTrip(trip);
 }
 
 export async function saveFullItinerary(name: string, destinations: Trip[]): Promise<void> {
-  if (!db) return;
   const itineraryId = Date.now().toString();
   
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('INSERT INTO itineraries (id, name) VALUES (?, ?);', [itineraryId, name]);
-    
-    for (const dest of destinations) {
-      await db.runAsync(
-        `INSERT INTO saved_destinations (id, itinerary_id, location_name, 
-        address, planned_time, duration_hours, note, location_place_id, 
-        order_index, latitude, longitude)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-        [
-          (Date.now() + Math.random()).toString(), 
-          itineraryId, 
-          dest.location_name, 
-          dest.address, 
-          dest.planned_time ?? null, 
-          dest.duration_hours ?? null, 
-          dest.note, 
-          dest.location_place_id, 
-          dest.order_index, 
-          dest.latitude ?? null, 
-          dest.longitude ?? null
-        ]
-      );
-    }
-  });
+  if (Platform.OS === 'web') {
+    const itineraries = JSON.parse(localStorage.getItem('itineraries') || '[]');
+    const savedDestinations = JSON.parse(localStorage.getItem('saved_destinations') || '{}');
+    itineraries.push({ id: itineraryId, name, created_at: new Date().toISOString() });
+    savedDestinations[itineraryId] = destinations;
+    localStorage.setItem('itineraries', JSON.stringify(itineraries));
+    localStorage.setItem('saved_destinations', JSON.stringify(savedDestinations));
+    return;
+  }
+  
+  if (!db) throw new Error("Database offline");
+  await db.runAsync('INSERT INTO itineraries (id, name) VALUES (?, ?);', [itineraryId, name]);
+  for (const dest of destinations) {
+    await db.runAsync(
+      `INSERT INTO saved_destinations (
+        id, itinerary_id, location_name, address, 
+        planned_time, duration_hours, note, location_place_id, 
+        order_index, latitude, longitude
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, 
+      [
+        (Date.now() + Math.random()).toString(), 
+        itineraryId, 
+        dest.location_name || "", 
+        dest.address || "", 
+        dest.planned_time ?? null, 
+        dest.duration_hours ?? null, 
+        dest.note || "", 
+        dest.location_place_id || "", 
+        dest.order_index ?? 0, 
+        dest.latitude ?? null, 
+        dest.longitude ?? null
+      ]
+    );
+  }
 }
 
 export async function getItineraries(): Promise<Itinerary[]> {
+  if (Platform.OS === 'web') {
+    const itins = JSON.parse(localStorage.getItem('itineraries') || '[]');
+    return itins.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
   if (!db) return [];
   return db.getAllAsync<Itinerary>('SELECT * FROM itineraries ORDER BY created_at DESC;');
 }
 
 export async function getSavedDestinations(itineraryId: string): Promise<Trip[]> {
+  if (Platform.OS === 'web') {
+    const saved = JSON.parse(localStorage.getItem('saved_destinations') || '{}');
+    return saved[itineraryId] || [];
+  }
   if (!db) return [];
   return db.getAllAsync<Trip>('SELECT * FROM saved_destinations WHERE itinerary_id = ? ORDER BY order_index ASC;', [itineraryId]);
 }
 
 export async function deleteFullItinerary(id: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    const itins = JSON.parse(localStorage.getItem('itineraries') || '[]');
+    const saved = JSON.parse(localStorage.getItem('saved_destinations') || '{}');
+    localStorage.setItem('itineraries', JSON.stringify(itins.filter((i: any) => i.id !== id)));
+    delete saved[id];
+    localStorage.setItem('saved_destinations', JSON.stringify(saved));
+    return;
+  }
   if (!db) return;
   await db.runAsync('DELETE FROM itineraries WHERE id = ?;', [id]);
 }
