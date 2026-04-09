@@ -1,18 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform } from "react-native";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { SharedValue } from 'react-native-reanimated';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { SafeAreaView } from "react-native-safe-area-context";
 import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
 import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
 import { useNetwork } from '../../hooks/use-network';
-import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips, saveFullItinerary, getItineraries, getSavedDestinations, deleteFullItinerary, Itinerary, clearActiveTrips} from '../../hooks/use-offline-db';
+import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips, saveFullItinerary, getItineraries, getSavedDestinations, deleteFullItinerary,Itinerary, clearActiveTrips } from '../../hooks/use-offline-db';
 
 export const NATIVE_MAPS_KEY = Platform.select({
   // Application Restricted keys for use in map tab (include only Maps SDK for iOS/Android/Web)
@@ -23,6 +22,120 @@ export const NATIVE_MAPS_KEY = Platform.select({
 
 // API Restricted key for use in GooglePlacesAutocomplete (include Places API, Geocoding API, and Distance Matrix API)
 export const TRIPS_KEY = process.env.EXPO_PUBLIC_TRIPS_KEY;
+
+const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit, onDelete, onSwipeOpen, onShowWarning }: any) => {
+  const swipeRef = useRef<any>(null);
+
+  const handleWarningPress = () => {
+    if (isWeb) {
+      window.alert("Schedule Conflict\n\n" + warning);
+    } else {
+      onShowWarning(warning);
+    }
+  };
+
+  const CardContent = (
+    <ScaleDecorator>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPressIn={isWeb ? drag : undefined}
+        onLongPress={isWeb ? undefined : drag}
+        onPress={() => onEdit(item)}
+        disabled={isActive}
+        style={[
+          styles.card,
+          { 
+            backgroundColor: isActive ? theme.colors.muted : theme.colors.white,
+            transform: [{ scale: isActive ? 0.98 : 1 }],
+            elevation: isActive ? 8 : 4,
+            borderColor: warning ? theme.colors.error : 'transparent', 
+            borderWidth: 1.5, 
+            borderLeftWidth: 5, 
+            borderLeftColor: warning ? theme.colors.error : theme.colors.primary 
+          },
+          isWeb ? ({ cursor: isActive ? 'grabbing' : 'grab' } as any) : null
+        ]}
+      >
+        <View style={styles.dragHandle}>
+          <Ionicons name="menu-outline" size={24} color={warning ? theme.colors.error : theme.colors.subtext} />
+        </View>
+        
+        <View style={styles.details}>
+          <Text style={[styles.locationName, warning && { color: theme.colors.error }]} numberOfLines={1}>
+            {item.location_name || "Unknown Location"}
+          </Text>
+          <Text style={styles.time} numberOfLines={1}>
+            {item.planned_date ? `${item.planned_date} • ` : ""}
+            {item.planned_time ? item.planned_time : "Time not set"} 
+            {item.duration_hours != null ? ` (${item.duration_hours}h)` : ""}
+          </Text>
+        </View>
+
+        {warning && (
+          <TouchableOpacity 
+            style={{ paddingHorizontal: 10, justifyContent: 'center' }} 
+            onPress={handleWarningPress}
+            hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
+          >
+            <Ionicons name="warning" size={24} color={theme.colors.error} />
+          </TouchableOpacity>
+        )}
+
+        {isWeb && (
+          <View style={{ flexDirection: 'row', gap: 15, paddingHorizontal: 10 }}>
+            <TouchableOpacity onPress={() => onEdit(item)} style={{ padding: 5 }}>
+              <Ionicons name="create-outline" size={22} color={theme.colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onDelete(item.id)} style={{ padding: 5 }}>
+              <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </TouchableOpacity>
+    </ScaleDecorator>
+  );
+
+  if (isWeb) {
+    return <View style={{ marginBottom: theme.spacing.sm }}>{CardContent}</View>;
+  }
+
+  return (
+    <View style={{ marginBottom: theme.spacing.sm }}>
+      <ReanimatedSwipeable
+        key={item.id}
+        containerStyle={{ flex: 1 }}
+        friction={2}
+        rightThreshold={40}
+        overshootRight={false}
+        ref={((ref: any) => { if (ref) swipeRef.current = ref; }) as any}
+        onSwipeableWillOpen={() => onSwipeOpen(item.id, swipeRef.current)}
+        renderRightActions={() => (
+          <TouchableOpacity 
+            style={styles.swipeDeleteAction} 
+            onPress={() => { 
+              if (swipeRef.current) swipeRef.current.close(); 
+              onDelete(item.id); 
+            }}
+          >
+            <Ionicons name="trash" size={28} color="#FFF" />
+          </TouchableOpacity>
+        )}
+      >
+        {CardContent}
+      </ReanimatedSwipeable>
+    </View>
+  );
+}, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.planned_time === next.item.planned_time &&
+    prev.item.planned_date === next.item.planned_date &&
+    prev.item.duration_hours === next.item.duration_hours &&
+    prev.item.location_name === next.item.location_name &&
+    prev.warning === next.warning &&
+    prev.isActive === next.isActive
+  );
+});
 
 export default function Trips() {
   const { isOnline } = useNetwork();
@@ -42,19 +155,31 @@ export default function Trips() {
   const [successVisible, setSuccessVisible] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedWarning, setSelectedWarning] = useState<string | null>(null); 
   const [webQuery, setWebQuery] = useState("");
   const [webResults, setWebResults] = useState<any[]>([]);
-  const swipeableRefs = useRef(new Map<string, any>()).current;
-  const currentlyOpenId = useRef<string | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [pYear, setPYear] = useState(new Date().getFullYear().toString());
+  const [pMonth, setPMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
+  const [pDay, setPDay] = useState(new Date().getDate().toString().padStart(2, '0'));
   const [tHour, setTHour] = useState("12");
   const [tMin, setTMin] = useState("00");
   const [tPeriod, setTPeriod] = useState("AM");
   const [dHour, setDHour] = useState(0);
   const [dMin, setDMin] = useState(0);
+  const [localNote, setLocalNote] = useState("");
+  const [localName, setLocalName] = useState("");
 
-  // Initialize DB and load trips from local storage on app start
+  const [logisticsWarnings, setLogisticsWarnings] = useState<Record<string, string>>({});
+  const travelCache = useRef<Record<string, number>>({});
+  const [isDragging, setIsDragging] = useState(false);
+  const [showWarningBanner, setShowWarningBanner] = useState(false);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const swipeableRefs = useRef(new Map<string, any>());
+  const currentlyOpenId = useRef<string | null>(null);
+
   useEffect(() => {
     const setup = async () => {
       await initDB();
@@ -73,32 +198,135 @@ export default function Trips() {
 
   useEffect(() => {
     if (editingItem) {
+      let y = new Date().getFullYear(), m = new Date().getMonth() + 1, d = new Date().getDate();
+      if ((editingItem as any).planned_date) {
+        const parts = (editingItem as any).planned_date.split("-");
+        y = parseInt(parts[0], 10) || y;
+        m = parseInt(parts[1], 10) || m;
+        d = parseInt(parts[2], 10) || d;
+      }
+      setPYear(y.toString());
+      setPMonth(m.toString().padStart(2, '0'));
+      setPDay(d.toString().padStart(2, '0'));
+
+      let h = 12, min = 0, period = "AM";
       if (editingItem.planned_time) {
-        const [time, period] = editingItem.planned_time.split(" ");
-        const [h, m] = time.split(":");
-        setTHour(h);
-        setTMin(m);
-        setTPeriod(period);
+        const parts = editingItem.planned_time.split(" ");
+        period = parts[1] === "PM" ? "PM" : "AM";
+        const timeParts = (parts[0] || "12:00").split(":");
+        h = parseInt(timeParts[0], 10);
+        if (isNaN(h) || h < 1 || h > 12) h = 12;
+        min = parseInt(timeParts[1], 10);
+        if (isNaN(min) || min < 0 || min > 59) min = 0;
       }
-      if (editingItem.duration_hours !== null && editingItem.duration_hours !== undefined) {
-        setDHour(Math.floor(editingItem.duration_hours));
-        setDMin((editingItem.duration_hours % 1) * 60);
+      setTHour(h.toString().padStart(2, '0'));
+      setTMin(min.toString().padStart(2, '0'));
+      setTPeriod(period);
+
+      let dh = 0, dm = 0;
+      if (editingItem.duration_hours != null) {
+        dh = Math.floor(Number(editingItem.duration_hours));
+        if (isNaN(dh) || dh < 0) dh = 0;
+        dm = Math.round((Number(editingItem.duration_hours) % 1) * 60);
+        if (isNaN(dm)) dm = 0;
+        dm = dm >= 15 ? 30 : 0; 
       }
+      setDHour(dh);
+      setDMin(dm);
+      setLocalNote(editingItem.note || "");
+      setLocalName(editingItem.location_name || "");
     }
   }, [editingItem]);
 
-  const closeAnyOpenSwipeable = () => {
+  const timeToMinutes = useCallback((timeStr: string) => {
+    if (!timeStr) return 0;
+    const [time, period] = timeStr.split(' ');
+    if (!time) return 0;
+    let [hours, minutes] = time.split(':').map(Number);
+    if (isNaN(hours)) hours = 12;
+    if (isNaN(minutes)) minutes = 0;
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline || data.length < 2 || isDragging || !!editingItem) return;
+
+    const abortController = new AbortController();
+    let isActive = true;
+
+    const validateLogistics = async () => {
+      try {
+        let warnings: Record<string, string> = {};
+        for (let i = 0; i < data.length - 1; i++) {
+          const current = data[i] as any;
+          const next = data[i + 1] as any;
+          if (!current.planned_time || !next.planned_time || current.duration_hours == null) continue;
+          
+          const cacheKey = `${current.location_place_id}-${next.location_place_id}`;
+          let travelSeconds = travelCache.current[cacheKey];
+          
+          if (travelSeconds === undefined) {
+            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=place_id:${current.location_place_id}&destinations=place_id:${next.location_place_id}&key=${TRIPS_KEY}`;
+            const res = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(url)}` : url, { signal: abortController.signal });
+            const json = await res.json();
+            travelSeconds = json.rows?.[0]?.elements?.[0]?.duration?.value || 0;
+            travelCache.current[cacheKey] = travelSeconds; 
+          }
+          
+          if (!isActive) return;
+          
+          const currentStartMins = timeToMinutes(current.planned_time);
+          const durationMins = current.duration_hours * 60;
+          const travelMins = Math.ceil(travelSeconds / 60);
+          const earliestArrivalMins = currentStartMins + durationMins + travelMins;
+          const nextPlannedStartMins = timeToMinutes(next.planned_time);
+          
+          if (nextPlannedStartMins < earliestArrivalMins) {
+            const arrivalHours = Math.floor(earliestArrivalMins / 60);
+            const arrivalMins = earliestArrivalMins % 60;
+            const displayHours = arrivalHours % 12 || 12;
+            const ampm = arrivalHours >= 12 ? 'PM' : 'AM';
+            warnings[next.id] = `Based on travel time, the earliest you can arrive is ${displayHours}:${arrivalMins.toString().padStart(2, '0')} ${ampm}.`;
+          }
+        }
+        if (isActive) {
+          setLogisticsWarnings(prev => JSON.stringify(prev) !== JSON.stringify(warnings) ? warnings : prev);
+        }
+      } catch (e) {
+        // Silently catch aborts
+      }
+    };
+
+    const timeoutId = setTimeout(validateLogistics, 500);
+    return () => { 
+      isActive = false; 
+      clearTimeout(timeoutId); 
+      abortController.abort(); 
+    };
+  }, [data, isOnline, isDragging, timeToMinutes, editingItem]);
+
+  const closeAnyOpenSwipeable = useCallback(() => {
     if (currentlyOpenId.current) {
-      const node = swipeableRefs.get(currentlyOpenId.current);
-      if (node) node.close();
+      const node = swipeableRefs.current.get(currentlyOpenId.current);
+      if (node && typeof node.close === 'function') node.close();
       currentlyOpenId.current = null;
     }
-  };
+  }, []);
+
+  const handleSwipeOpen = useCallback((id: string, ref: any) => {
+    if (currentlyOpenId.current && currentlyOpenId.current !== id) {
+      const node = swipeableRefs.current.get(currentlyOpenId.current);
+      if (node && typeof node.close === 'function') node.close();
+    }
+    currentlyOpenId.current = id;
+    swipeableRefs.current.set(id, ref);
+  }, []);
 
   const handleAddManualTrip = async (details: any) => {
     const newEntry: TripDestination = {
-      id: Date.now().toString(),
-      // Use the Place Name if it's a business, otherwise fallback to address
+      id: Date.now().toString() + "-" + Math.floor(Math.random() * 1000).toString(),
       location_name: details.name || details.formatted_address,
       address: details.formatted_address,
       location_place_id: details.place_id,
@@ -107,86 +335,100 @@ export default function Trips() {
       order_index: data.length,
       status: 'Pending',
       note: "",
+      planned_date: null as any,
       planned_time: null,
       duration_hours: null,
+      opening_hours: details.opening_hours ? JSON.stringify(details.opening_hours.periods) : null as any,
     };
-
-    const updatedData = [...data, newEntry];
-    setData(updatedData);
+    setData(prev => [...prev, newEntry]);
     setIsUnsaved(true);
     await saveTrip(newEntry as any);
     setIsSearchVisible(false);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleEdit = useCallback((item: TripDestination) => {
     closeAnyOpenSwipeable();
-    const indexToDelete = data.findIndex(item => item.id === id);
-    if (indexToDelete === -1) return;
-    if (undoTimerRef.current) {
-      clearTimeout(undoTimerRef.current);
-    }
-    const itemToDelete = data[indexToDelete];
-    setLastDeleted({ item: itemToDelete, index: indexToDelete });
-    
-    const newData = data.filter(item => item.id !== id);
-    const updated = newData.map((item, index) => ({ ...item, order_index: index }));
-    setData(updated);
-    setIsUnsaved(true);
-    await deleteTrip(id);
-    await saveAllTrips(updated as any);
-    
+    setEditingItem(item);
+  }, [closeAnyOpenSwipeable]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    closeAnyOpenSwipeable();
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setData(prev => {
+      const indexToDelete = prev.findIndex(item => item.id === id);
+      if (indexToDelete === -1) return prev;
+      const itemToDelete = prev[indexToDelete];
+      setTimeout(() => setLastDeleted({ item: itemToDelete, index: indexToDelete }), 0);
+      const newData = prev.filter(item => item.id !== id);
+      const updated = newData.map((item, index) => item.order_index === index ? item : { ...item, order_index: index });
+      Promise.resolve().then(async () => { 
+        setIsUnsaved(true); 
+        await deleteTrip(id); 
+        await saveAllTrips(updated as any); 
+      });
+      return updated;
+    });
     setShowUndo(true);
-    undoTimerRef.current = setTimeout(() => {
-      setShowUndo(false);
-      setLastDeleted(null);
+    undoTimerRef.current = setTimeout(() => { 
+      setShowUndo(false); 
+      setLastDeleted(null); 
     }, 4000);
-  };
+  }, [closeAnyOpenSwipeable]);
 
   const handleUndo = async () => {
     if (!lastDeleted) return;
-    if (undoTimerRef.current) {
-      clearTimeout(undoTimerRef.current);
-    }
-
-    const newData = [...data];
-    newData.splice(lastDeleted.index, 0, lastDeleted.item);
-    const restored = newData.map((item, index) => ({ ...item, order_index: index }));
-    setData(restored);
-    await saveAllTrips(restored as any);
-    
-    setShowUndo(false);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setData(prev => {
+      const newData = [...prev];
+      newData.splice(lastDeleted.index, 0, lastDeleted.item);
+      const restored = newData.map((item, index) => item.order_index === index ? item : { ...item, order_index: index });
+      Promise.resolve().then(async () => { 
+        await saveAllTrips(restored as any); 
+      });
+      return restored;
+    });
+    setShowUndo(false); 
     setLastDeleted(null);
   };
 
   const handleUpdateItem = async () => {
-    if (!editingItem) return;
-
+    if (!editingItem) return;    
     const updatedItem: TripDestination = {
       ...editingItem,
+      location_name: localName,
+      note: localNote,
+      planned_date: `${pYear}-${pMonth}-${pDay}` as any,
       planned_time: `${tHour}:${tMin} ${tPeriod}`,
       duration_hours: dHour + (dMin / 60),
     };
-
-    const updatedData = data.map(item => item.id === updatedItem.id ? updatedItem : item);
-    setData(updatedData);
-    setIsUnsaved(true);
-    await saveTrip(updatedItem as any);
+    setData(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+    setIsUnsaved(true); 
+    await saveTrip(updatedItem as any); 
     setEditingItem(null);
   };
 
   const handleSaveInitiate = async () => {
-    if (!itineraryName.trim()) return;
+    const trimmedName = itineraryName.trim();
+    if (!trimmedName) return;
 
-    const list = await getItineraries();
+    if (Object.keys(logisticsWarnings).length > 0) {
+      setSaveModalVisible(false); 
+      setShowWarningBanner(true);
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = setTimeout(() => setShowWarningBanner(false), 4000);
+      return;
+    }
+
+    const list = await getItineraries(); 
     setSavedItineraries(list);
-
-    const existing = list.find(it => it.name.trim().toLowerCase() === itineraryName.trim().toLowerCase());
     
-    if (existing) {
-      setSaveModalVisible(false);
-      setConfirmReplaceVisible(true);
-    } else {
-      await executeSave();
+    const existing = list.find(it => (it.name || "").trim().toLowerCase() === trimmedName.toLowerCase());
+    
+    if (existing) { 
+      setSaveModalVisible(false); 
+      setConfirmReplaceVisible(true); 
+    } else { 
+      await executeSave(); 
     }
   };
 
@@ -194,151 +436,94 @@ export default function Trips() {
     if (data.length === 0) return;
     try {
       await saveFullItinerary(itineraryName.trim(), data as any);
-      setIsUnsaved(false);
-      setSaveModalVisible(false);
+      setIsUnsaved(false); 
+      setSaveModalVisible(false); 
       setConfirmReplaceVisible(false);
-      setItineraryName("");
-      const list = await getItineraries();
-      setSavedItineraries(list);
+      setItineraryName(""); 
+      const list = await getItineraries(); 
+      setSavedItineraries(list); 
       setSuccessVisible(true);
-    } catch (e: any) {
-      alert("Save Failed: " + e.message);
+    } catch (e: any) { 
+      alert("Save Failed: " + e.message); 
     }
   };
 
   const handleReplace = async () => {
-    const existing = savedItineraries.find(it => it.name.trim().toLowerCase() === itineraryName.trim().toLowerCase());
-    if (existing) {
-      await deleteFullItinerary(existing.id);
+    try {
+      const trimmedName = itineraryName.trim();
+      const list = await getItineraries();
+      const existing = list.find(it => (it.name || "").trim().toLowerCase() === trimmedName.toLowerCase());
+      
+      if (existing) {
+        await deleteFullItinerary(existing.id);
+      }
+      
+      await executeSave();
+    } catch (error: any) {
+      alert("Failed to replace trip: " + error.message);
     }
-    await executeSave();
   };
 
   const openLoadManager = async () => {
     if (isUnsaved && data.length > 0) {
       setConflictModalVisible(true);
-    } else {
-      const list = await getItineraries();
-      setSavedItineraries(list);
-      setLoadModalVisible(true);
+    } else { 
+      const list = await getItineraries(); 
+      setSavedItineraries(list); 
+      setLoadModalVisible(true); 
     }
   };
 
   const performLoad = async (id: string) => {
     const loadedDestinations = await getSavedDestinations(id);
-    await clearActiveTrips();
+    await clearActiveTrips(); 
     await saveAllTrips(loadedDestinations as any);
-    setData(loadedDestinations as any);
-    setIsUnsaved(false);
+    setData(loadedDestinations as any); 
+    setIsUnsaved(false); 
     setLoadModalVisible(false);
   };
 
-  const handleDeleteItinerary = (id: string) => {
-    setDeletingId(id);
-    setConfirmDeleteVisible(true);
+  const handleDeleteItinerary = (id: string) => { 
+    setDeletingId(id); 
+    setConfirmDeleteVisible(true); 
   };
 
   const executeDelete = async () => {
-    if (deletingId) {
-      await deleteFullItinerary(deletingId);
-      const list = await getItineraries();
-      setSavedItineraries(list);
+    if (deletingId) { 
+      await deleteFullItinerary(deletingId); 
+      const list = await getItineraries(); 
+      setSavedItineraries(list); 
     }
-    setConfirmDeleteVisible(false);
+    setConfirmDeleteVisible(false); 
     setDeletingId(null);
   };
 
-  const handleClearActiveTrip = async () => {
-    setData([]);
-    setIsUnsaved(false);
-    await clearActiveTrips();
+  const handleClearActiveTrip = async () => { 
+    setData([]); 
+    setIsUnsaved(false); 
+    await clearActiveTrips(); 
   };
 
-  const renderRightActions = (prog: SharedValue<number>, drag: SharedValue<number>, swp: any, id: string) => (
-    <TouchableOpacity style={styles.swipeDeleteAction} onPress={() => { swp.close(); handleDelete(id); }}>
-      <Ionicons name="trash" size={28} color="#FFF" />
-    </TouchableOpacity>
-  );
-
-  const renderWebActions = (item: TripDestination) => (
-    <View style={{ flexDirection: 'row', gap: 15, paddingHorizontal: 10 }}>
-      <TouchableOpacity onPress={() => setEditingItem(item)} style={{ padding: 5 }}>
-        <Ionicons name="create-outline" size={22} color={theme.colors.primary} />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => handleDelete(item.id)} style={{ padding: 5 }}>
-        <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderItem = ({ item, drag, isActive }: RenderItemParams<TripDestination>) => {
+  const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<TripDestination>) => {
     const isWeb = Platform.OS === 'web';
-
-    const CardContent = (
-      <ScaleDecorator>
-        <TouchableOpacity
-          onPressIn={() => { closeAnyOpenSwipeable(); if (isWeb) drag(); }}
-          onLongPress={isWeb ? undefined : drag}
-          onPress={() => { closeAnyOpenSwipeable(); if (!isWeb) setEditingItem(item); }}
-          disabled={isActive}
-          style={[
-            styles.card, 
-            { backgroundColor: isActive ? theme.colors.muted : theme.colors.white },
-            isWeb && ({ cursor: isActive ? 'grabbing' : 'grab' } as any)
-          ]}
-        >
-          <View style={styles.dragHandle}>
-            <Ionicons name="menu-outline" size={24} color={theme.colors.subtext} />
-          </View>
-          
-          <View style={styles.details}>
-            <Text style={styles.locationName}>{item.location_name}</Text>
-            <Text style={styles.time}>
-              {item.planned_time ? item.planned_time : "Time not set"} 
-              {item.duration_hours ? ` (${item.duration_hours}h)` : ""}
-            </Text>
-          </View>
-
-          {isWeb ? renderWebActions(item) : null}
-        </TouchableOpacity>
-      </ScaleDecorator>
-    );
-
-    if (isWeb) {
-      return <View style={{ marginBottom: theme.spacing.sm }}>{CardContent}</View>;
-    }
-
+    const warning = logisticsWarnings[item.id];
     return (
-      <View style={{ marginBottom: theme.spacing.sm }}>
-        <ReanimatedSwipeable
-          ref={((ref: any) => {
-            if (ref) swipeableRefs.set(item.id, ref);
-            else swipeableRefs.delete(item.id);
-          }) as any}
-          onSwipeableWillOpen={() => {
-            if (currentlyOpenId.current && currentlyOpenId.current !== item.id) {
-              const previousNode = swipeableRefs.get(currentlyOpenId.current);
-              if (previousNode) previousNode.close();
-            }
-            currentlyOpenId.current = item.id;
-          }}
-          renderRightActions={(p, d, s) => renderRightActions(p, d, s, item.id)}
-          friction={2}
-          rightThreshold={40}
-          overshootRight={false}
-        >
-          {CardContent}
-        </ReanimatedSwipeable>
-      </View>
+      <TripItemCard
+        item={item} 
+        drag={drag} 
+        isActive={isActive} 
+        isWeb={isWeb} 
+        warning={warning}
+        onEdit={handleEdit} 
+        onDelete={handleDelete} 
+        onSwipeOpen={handleSwipeOpen}
+        onShowWarning={(msg: string) => setSelectedWarning(msg)}
+      />
     );
-  };
+  }, [logisticsWarnings, handleEdit, handleDelete, handleSwipeOpen]);
 
   const renderFooter = () => (
-    <TouchableOpacity 
-      style={styles.addCard} 
-      onPress={() => setIsSearchVisible(true)}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={styles.addCard} onPress={() => setIsSearchVisible(true)} activeOpacity={0.7}>
       <Ionicons name="add" size={24} color={theme.colors.primary} style={{ marginRight: 8 }} />
       <Text style={styles.addText}>Add Destination</Text>
     </TouchableOpacity>
@@ -358,12 +543,19 @@ export default function Trips() {
           
           <DraggableFlatList
             data={data}
-            onScrollBeginDrag={closeAnyOpenSwipeable}
-            onDragEnd={ async ({ data }) => {
-              const reordered = data.map((item, index) => ({ ...item, order_index: index }));
-              setData(reordered);
+            extraData={logisticsWarnings}
+            onDragBegin={() => { 
+              closeAnyOpenSwipeable(); 
+              setIsDragging(true); 
+            }}
+            onDragEnd={ async ({ data: reorderedData }) => {
+              setIsDragging(false);
+              const updatedData = reorderedData.map((item, index) => 
+                item.order_index === index ? item : { ...item, order_index: index }
+              );
+              setData(updatedData); 
               setIsUnsaved(true);
-              await saveAllTrips(reordered as any);
+              await saveAllTrips(updatedData as any);
             }}
             activationDistance={Platform.OS === 'web' ? 1 : undefined}
             keyExtractor={(item) => item.id}
@@ -374,8 +566,8 @@ export default function Trips() {
 
           <View style={styles.footerBar}>
             <TouchableOpacity 
-              style={[styles.footerBtn, data.length === 0 && styles.btnDisabled]}
-              disabled={data.length === 0}
+              style={[styles.footerBtn, data.length === 0 && styles.btnDisabled]} 
+              disabled={data.length === 0} 
               onPress={() => setSaveModalVisible(true)}
             >
               <Ionicons name="save-outline" size={20} color={data.length === 0 ? "#999" : theme.colors.primary} />
@@ -398,6 +590,22 @@ export default function Trips() {
               </TouchableOpacity>
             </View>
           )}
+          {showWarningBanner && (
+            <View style={[styles.undoContainer, { backgroundColor: theme.colors.error }]}>
+              <Text style={styles.undoText}>Please fix conflicts before saving.</Text>
+            </View>
+          )}
+
+          <Modal visible={!!selectedWarning} transparent animationType="fade">
+            <View style={styles.overlay}>
+              <View style={styles.alertBox}>
+                <Ionicons name="warning" size={54} color={theme.colors.error} style={{ marginBottom: 10 }} />
+                <Text style={styles.alertTitle}>Schedule Conflict</Text>
+                <Text style={styles.alertSub}>{selectedWarning}</Text>
+                <PrimaryButton title="Got it" onPress={() => setSelectedWarning(null)} style={styles.modalBtn} />
+              </View>
+            </View>
+          </Modal>
 
           <Modal visible={isSearchVisible} animationType="fade">
             <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.bg }}>
@@ -416,53 +624,39 @@ export default function Trips() {
                     placeholder="Search for a place..."
                     value={webQuery}
                     onChangeText={(text) => {
-                      setWebQuery(text);
-                      
+                      setWebQuery(text); 
                       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                      
-                      if (text.length < 3) {
-                        setWebResults([]);
-                        return;
+                      if (text.length < 3) { 
+                        setWebResults([]); 
+                        return; 
                       }
-
                       searchTimeoutRef.current = setTimeout(async () => {
                         try {
-                          const targetUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${TRIPS_KEY}`;
-                          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-                          if (!res.ok) throw new Error("Network error");
-                          const json = await res.json();
+                          const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${TRIPS_KEY}`;
+                          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+                          const json = await res.json(); 
                           setWebResults(json.predictions || []);
-                        } catch (e) { 
-                          console.error("Places API Error:", e); 
-                        }
+                        } catch (e) { }
                       }, 600);
                     }}
                   />
                   <ScrollView style={{ flex: 1 }}>
                     {webResults.map((place) => (
-                      <TouchableOpacity
-                        key={place.place_id}
-                        style={{ padding: 15, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: '#fff' }}
+                      <TouchableOpacity 
+                        key={place.place_id} 
+                        style={{ padding: 15, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: '#fff' }} 
                         onPress={async () => {
                           try {
-                            const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&key=${TRIPS_KEY}`;
-                            const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(detailsUrl)}`);
-                            if (!res.ok) throw new Error("Failed to fetch place details");
-                            
-                            const json = await res.json();
-                            if (json.result) {
-                              handleAddManualTrip(json.result);
-                              setWebQuery("");
-                              setWebResults([]);
-                            } else {
-                              alert("Could not load place details.");
+                            const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,geometry,place_id,opening_hours&key=${TRIPS_KEY}`;
+                            const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+                            const json = await res.json(); 
+                            if (json.result) { 
+                              handleAddManualTrip(json.result); 
+                              setWebQuery(""); 
+                              setWebResults([]); 
                             }
-                          } catch (e) {
-                            console.error("Details Fetch Error:", e);
-                            alert("Failed to load details. The proxy might be busy, please try again.");
-                          }
-                        }}
-                      >
+                          } catch (e) { }
+                      }}>
                         <Text style={{ fontWeight: 'bold' }}>{place.structured_formatting?.main_text || place.description}</Text>
                         <Text style={{ color: 'gray', fontSize: 12 }}>{place.structured_formatting?.secondary_text || ""}</Text>
                       </TouchableOpacity>
@@ -470,22 +664,15 @@ export default function Trips() {
                   </ScrollView>
                 </View>
               ) : (
-                <GooglePlacesAutocomplete
-                  placeholder='Search for a place...'
-                  fetchDetails={true}
-                  onPress={(data, details = null) => {
-                    if (details) handleAddManualTrip(details);
-                  }}
-                  debounce={400}
-                  onFail={(error) => console.error("Google Places Error: ", error)}
-                  query={{
-                    key: TRIPS_KEY,
-                    language: 'en',
-                  }}
-                  styles={{
-                    textInputContainer: styles.searchInputContainer,
-                    textInput: styles.searchInput,
-                  }}
+                <GooglePlacesAutocomplete 
+                  placeholder='Search for a place...' 
+                  fetchDetails={true} 
+                  onPress={(data, details = null) => { 
+                    if (details) handleAddManualTrip(details); 
+                  }} 
+                  debounce={400} 
+                  query={{ key: TRIPS_KEY, language: 'en' }} 
+                  styles={{ textInputContainer: styles.searchInputContainer, textInput: styles.searchInput }} 
                 />
               )}
             </SafeAreaView>
@@ -500,44 +687,55 @@ export default function Trips() {
                     <Ionicons name="close" size={24} color={theme.colors.text} />
                   </TouchableOpacity>
                 </View>
-
+                
                 <ScrollView showsVerticalScrollIndicator={false}>
                   <Text style={styles.label}>Destination Name</Text>
                   <TextInput 
-                    style={styles.input}
-                    value={editingItem?.location_name || ""}
-                    onChangeText={(text) => setEditingItem(prev => prev ? {...prev, location_name: text} : null)}
-                    placeholder="Enter destination name"
+                    style={styles.input} 
+                    value={localName} 
+                    onChangeText={setLocalName} 
+                    placeholder="Enter destination name" 
                   />
                   <Text style={styles.label}>Address</Text>
                   <TextInput 
-                    style={[styles.input, { backgroundColor: theme.colors.muted, color: theme.colors.subtext }]}
-                    value={editingItem?.address || "No address provided"}
-                    editable={false}
-                    multiline
+                    style={[styles.input, { backgroundColor: theme.colors.muted, color: theme.colors.subtext }]} 
+                    value={editingItem?.address || "No address provided"} 
+                    editable={false} 
+                    multiline 
                   />
-                  <Text style={styles.label}>Planned Arrival</Text>
+                  
+                  <Text style={styles.label}>Planned Date</Text>
                   <View style={styles.pickerContainer}>
-                    <Picker
-                      selectedValue={tHour}
-                      style={styles.picker}
-                      onValueChange={(val) => setTHour(val)}>
+                    <Picker selectedValue={pYear} style={styles.picker} onValueChange={setPYear}>
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i).map(y => (
+                        <Picker.Item key={y.toString()} label={y.toString()} value={y.toString()} />
+                      ))}
+                    </Picker>
+                    <Picker selectedValue={pMonth} style={styles.picker} onValueChange={setPMonth}>
+                      {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(m => (
+                        <Picker.Item key={m} label={m} value={m} />
+                      ))}
+                    </Picker>
+                    <Picker selectedValue={pDay} style={styles.picker} onValueChange={setPDay}>
+                      {Array.from({ length: 31 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(d => (
+                        <Picker.Item key={d} label={d} value={d} />
+                      ))}
+                    </Picker>
+                  </View>
+
+                  <Text style={styles.label}>Planned Arrival Time</Text>
+                  <View style={styles.pickerContainer}>
+                    <Picker selectedValue={tHour} style={styles.picker} onValueChange={setTHour}>
                       {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
                         <Picker.Item key={h} label={h} value={h} />
                       ))}
                     </Picker>
-                    <Picker
-                      selectedValue={tMin}
-                      style={styles.picker}
-                      onValueChange={(val) => setTMin(val)}>
+                    <Picker selectedValue={tMin} style={styles.picker} onValueChange={setTMin}>
                       {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
                         <Picker.Item key={m} label={m} value={m} />
                       ))}
                     </Picker>
-                    <Picker
-                      selectedValue={tPeriod}
-                      style={styles.picker}
-                      onValueChange={(val) => setTPeriod(val)}>
+                    <Picker selectedValue={tPeriod} style={styles.picker} onValueChange={setTPeriod}>
                       <Picker.Item label="AM" value="AM" />
                       <Picker.Item label="PM" value="PM" />
                     </Picker>
@@ -545,18 +743,12 @@ export default function Trips() {
 
                   <Text style={styles.label}>Duration</Text>
                   <View style={styles.pickerContainer}>
-                    <Picker
-                      selectedValue={dHour}
-                      style={styles.picker}
-                      onValueChange={(val) => setDHour(val)}>
+                    <Picker selectedValue={dHour} style={styles.picker} onValueChange={setDHour}>
                       {Array.from({ length: 25 }, (_, i) => i).map(h => (
                         <Picker.Item key={h} label={`${h}h`} value={h} />
                       ))}
                     </Picker>
-                    <Picker
-                      selectedValue={dMin}
-                      style={styles.picker}
-                      onValueChange={(val) => setDMin(val)}>
+                    <Picker selectedValue={dMin} style={styles.picker} onValueChange={setDMin}>
                       <Picker.Item label="00m" value={0} />
                       <Picker.Item label="30m" value={30} />
                     </Picker>
@@ -564,13 +756,13 @@ export default function Trips() {
 
                   <Text style={styles.label}>Personal Notes</Text>
                   <TextInput 
-                    style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-                    multiline
-                    value={editingItem?.note || ""}
-                    onChangeText={(text) => setEditingItem(prev => prev ? {...prev, note: text} : null)}
-                    placeholder="Things to do, see, or eat..."
+                    style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
+                    multiline 
+                    value={localNote} 
+                    onChangeText={setLocalNote} 
+                    placeholder="Things to do, see, or eat..." 
                   />
-
+                  
                   <PrimaryButton title="Save Changes" onPress={handleUpdateItem} style={{ marginTop: 20, marginBottom: 40 }} />
                 </ScrollView>
               </View>
@@ -584,8 +776,8 @@ export default function Trips() {
                 <TextInput 
                   style={[styles.input, styles.modalInput]} 
                   placeholder="e.g. Summer in Japan" 
-                  value={itineraryName}
-                  onChangeText={setItineraryName}
+                  value={itineraryName} 
+                  onChangeText={setItineraryName} 
                 />
                 <PrimaryButton title="Confirm Save" onPress={handleSaveInitiate} style={styles.modalBtn} />
                 <TouchableOpacity onPress={() => setSaveModalVisible(false)}>
@@ -601,9 +793,9 @@ export default function Trips() {
                 <Text style={styles.alertTitle}>Trip Already Exists</Text>
                 <Text style={styles.alertSub}>A trip named "{itineraryName}" already exists. Do you want to replace it?</Text>
                 <PrimaryButton title="Replace Trip" onPress={handleReplace} style={styles.modalBtn} />
-                <TouchableOpacity onPress={() => {
-                  setConfirmReplaceVisible(false);
-                  setSaveModalVisible(true);
+                <TouchableOpacity onPress={() => { 
+                  setConfirmReplaceVisible(false); 
+                  setSaveModalVisible(true); 
                 }}>
                   <Text style={styles.cancelText}>Cancel & Rename</Text>
                 </TouchableOpacity>
@@ -631,7 +823,7 @@ export default function Trips() {
                     <Ionicons name="close" size={24} color={theme.colors.text} />
                   </TouchableOpacity>
                 </View>
-
+                
                 {savedItineraries.length === 0 ? (
                   <View style={styles.emptyContainer}>
                     <Ionicons name="folder-open-outline" size={48} color={theme.colors.border} />
@@ -641,23 +833,15 @@ export default function Trips() {
                   <ScrollView showsVerticalScrollIndicator={false}>
                     {savedItineraries.map((itinerary) => (
                       <View key={itinerary.id} style={styles.itineraryCardContainer}>
-                        <TouchableOpacity 
-                          style={styles.itineraryCard}
-                          onPress={() => performLoad(itinerary.id)}
-                        >
+                        <TouchableOpacity style={styles.itineraryCard} onPress={() => performLoad(itinerary.id)}>
                           <View style={styles.itineraryInfo}>
                             <Text style={styles.itineraryNameText}>{itinerary.name}</Text>
-                            <Text style={styles.itineraryDateText}>
-                              {new Date(itinerary.created_at).toLocaleDateString()}
-                            </Text>
+                            <Text style={styles.itineraryDateText}>{new Date(itinerary.created_at).toLocaleDateString()}</Text>
                           </View>
                           <Ionicons name="chevron-forward" size={20} color={theme.colors.subtext} />
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => handleDeleteItinerary(itinerary.id)}
-                          style={styles.itineraryDeleteBtn}
-                        >
+                        
+                        <TouchableOpacity onPress={() => handleDeleteItinerary(itinerary.id)} style={styles.itineraryDeleteBtn}>
                           <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
                         </TouchableOpacity>
                       </View>
@@ -674,10 +858,7 @@ export default function Trips() {
                 <Ionicons name="warning" size={48} color={theme.colors.error} style={{ marginBottom: 10 }} />
                 <Text style={styles.alertTitle}>Delete Saved Trip</Text>
                 <Text style={styles.alertSub}>Are you sure you want to permanently delete this saved itinerary? This action cannot be undone.</Text>
-                <TouchableOpacity 
-                  style={[styles.customActionBtn, { backgroundColor: theme.colors.error }]} 
-                  onPress={executeDelete}
-                >
+                <TouchableOpacity style={[styles.customActionBtn, { backgroundColor: theme.colors.error }]} onPress={executeDelete}>
                   <Text style={styles.customActionBtnText}>Delete Permanently</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setConfirmDeleteVisible(false)}>
@@ -692,16 +873,16 @@ export default function Trips() {
               <View style={styles.alertBox}>
                 <Text style={styles.alertTitle}>Unsaved Changes</Text>
                 <Text style={styles.alertSub}>Would you like to save your current trip before loading a new one?</Text>
-                <PrimaryButton title="Save Current First" onPress={() => {
-                  setConflictModalVisible(false);
-                  setSaveModalVisible(true);
+                <PrimaryButton title="Save Current First" onPress={() => { 
+                  setConflictModalVisible(false); 
+                  setSaveModalVisible(true); 
                 }} style={styles.modalBtn} />
-                <TouchableOpacity onPress={async () => {
-                  setConflictModalVisible(false);
-                  await handleClearActiveTrip();
-                  const list = await getItineraries();
-                  setSavedItineraries(list);
-                  setLoadModalVisible(true);
+                <TouchableOpacity onPress={async () => { 
+                  setConflictModalVisible(false); 
+                  await handleClearActiveTrip(); 
+                  const list = await getItineraries(); 
+                  setSavedItineraries(list); 
+                  setLoadModalVisible(true); 
                 }}>
                   <Text style={styles.discardText}>Discard and Continue</Text>
                 </TouchableOpacity>
@@ -715,50 +896,66 @@ export default function Trips() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.colors.bg },
-  container: { flex: 1, padding: theme.spacing.lg },
-  title: { fontSize: 22, fontWeight: "900", color: theme.colors.text },
-  sub: { margin: 10, color: theme.colors.subtext, fontWeight: "700" },
-  list: { paddingBottom: 20 },
+  safe: { 
+    flex: 1, 
+    backgroundColor: theme.colors.bg 
+  },
+  container: { 
+    flex: 1, 
+    padding: theme.spacing.lg 
+  },
+  title: { 
+    fontSize: 22, 
+    fontWeight: "900", 
+    color: theme.colors.text 
+  },
+  sub: { 
+    margin: 10, 
+    color: theme.colors.subtext, 
+    fontWeight: "700" 
+  },
+  list: { 
+    paddingBottom: 20 
+  },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
-    borderLeftWidth: 5,
-    borderLeftColor: theme.colors.primary,
-    elevation: 4,
-    shadowColor: "#000",
+    flexDirection: "row", 
+    alignItems: "center", 
+    borderRadius: theme.radius.md, 
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 16, 
+    borderLeftColor: theme.colors.primary, 
+    shadowColor: "#000", 
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.1, 
+    shadowRadius: 2, 
     overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
   },
   addCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: theme.colors.border,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "center", 
+    backgroundColor: theme.colors.white, 
+    borderRadius: theme.radius.md, 
+    padding: theme.spacing.md, 
+    marginBottom: theme.spacing.sm, 
+    borderWidth: 1, 
+    borderStyle: 'dashed', 
+    borderColor: theme.colors.border, 
+    elevation: 4, 
     height: 70,
   },
-  addText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: theme.colors.primary,
+  addText: { 
+    fontSize: 16, 
+    fontWeight: "700", 
+    color: theme.colors.primary 
   },
-  dragHandle: { marginRight: 12 },
-  details: { flex: 1 },
+  dragHandle: { 
+    marginRight: 12 
+  },
+  details: { 
+    flex: 1, 
+    justifyContent: 'center' 
+  },
   locationName: { 
     fontSize: 16, 
     fontWeight: "700", 
@@ -767,158 +964,151 @@ const styles = StyleSheet.create({
   time: { 
     fontSize: 12, 
     color: theme.colors.primary, 
-    fontWeight: "600" },
-  deleteButton: { padding: 8 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    fontWeight: "600", 
+    marginTop: 2 
   },
-  modalContent: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    height: '70%',
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'flex-end' 
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+  modalContent: { 
+    backgroundColor: '#FFF', 
+    borderTopLeftRadius: 20, 
+    borderTopRightRadius: 20, 
+    padding: 20, 
+    height: '70%' 
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '900',
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginBottom: 10 
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.subtext,
-    marginBottom: 8,
-    marginTop: 15,
+  modalTitle: { 
+    fontSize: 20, 
+    fontWeight: '900' 
   },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+  label: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: theme.colors.subtext, 
+    marginBottom: 8, 
+    marginTop: 15 
   },
-  pickerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.muted,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
+  input: { 
+    borderWidth: 1, 
+    borderColor: theme.colors.border, 
+    borderRadius: 8, 
+    padding: 12, 
+    fontSize: 16 
   },
-  picker: {
-    flex: 1,
-    height: 60,
+  pickerContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: theme.colors.muted, 
+    borderRadius: theme.radius.md, 
+    overflow: 'hidden' 
   },
-  undoContainer: {
-    position: 'absolute',
-    bottom: 85,
-    left: 20,
-    right: 20,
-    backgroundColor: '#323232',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: theme.radius.md,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    zIndex: 999,
+  picker: { 
+    flex: 1, 
+    height: 60 
   },
-  undoText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+  undoContainer: { 
+    position: 'absolute', 
+    bottom: 85, 
+    left: 20, 
+    right: 20, 
+    backgroundColor: '#323232', 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingVertical: 14, 
+    paddingHorizontal: 20, 
+    borderRadius: theme.radius.md, 
+    elevation: 10, 
+    zIndex: 999 
   },
-  undoButton: {
-    paddingHorizontal: 8,
+  undoText: { 
+    color: '#FFFFFF', 
+    fontSize: 14, 
+    fontWeight: '600' 
   },
-  undoButtonText: {
-    color: theme.colors.primary,
-    fontWeight: '900',
-    fontSize: 14,
+  undoButton: { 
+    paddingHorizontal: 8 
   },
-  searchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 15,
+  undoButtonText: { 
+    color: theme.colors.primary, 
+    fontWeight: '900', 
+    fontSize: 14 
   },
-  searchTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: theme.colors.text,
+  searchHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    padding: 15 
   },
-  searchInputContainer: {
-    backgroundColor: theme.colors.muted,
-    marginHorizontal: 15,
-    borderRadius: 10,
+  searchTitle: { 
+    fontSize: 18, 
+    fontWeight: '800', 
+    color: theme.colors.text 
   },
-  searchInput: {
-    height: 45,
-    color: theme.colors.text,
-    fontSize: 16,
-    backgroundColor: 'transparent',
+  searchInputContainer: { 
+    backgroundColor: theme.colors.muted, 
+    marginHorizontal: 15, 
+    borderRadius: 10 
   },
-  footerBar: {
-    position: 'absolute',
-    bottom: 10,
-    left: 20,
-    right: 20,
-    height: 60,
-    backgroundColor: '#FFF',
-    borderRadius: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  searchInput: { 
+    height: 45, 
+    color: theme.colors.text, 
+    fontSize: 16, 
+    backgroundColor: 'transparent' 
   },
-  footerBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  footerBar: { 
+    position: 'absolute', 
+    bottom: 10, 
+    left: 20, 
+    right: 20, 
+    height: 60, 
+    backgroundColor: '#FFF', 
+    borderRadius: 30, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    elevation: 10, 
+    borderWidth: 1, 
+    borderColor: theme.colors.border 
   },
-  footerBtnText: {
-    marginLeft: 8,
-    fontWeight: '700',
-    color: theme.colors.text,
+  footerBtn: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
   },
-  footerDivider: {
-    width: 1,
-    height: '60%',
-    backgroundColor: theme.colors.border,
+  footerBtnText: { 
+    marginLeft: 8, 
+    fontWeight: '700', 
+    color: theme.colors.text 
   },
-  btnDisabled: {
-    opacity: 0.5,
+  footerDivider: { 
+    width: 1, 
+    height: '60%', 
+    backgroundColor: theme.colors.border 
   },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    padding: 30,
+  btnDisabled: { 
+    opacity: 0.5 
   },
-  alertBox: {
-    backgroundColor: '#FFF',
-    borderRadius: theme.radius.lg,
-    padding: 30,
-    alignItems: 'center',
-    width: '85%',
-    alignSelf: 'center',
+  overlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.6)', 
+    justifyContent: 'center', 
+    padding: 30 
+  },
+  alertBox: { 
+    backgroundColor: '#FFF', 
+    borderRadius: theme.radius.lg, 
+    padding: 30, 
+    alignItems: 'center', 
+    width: '85%', 
+    alignSelf: 'center' 
   },
   alertTitle: { 
     fontSize: 18, 
@@ -926,27 +1116,27 @@ const styles = StyleSheet.create({
     marginBottom: 15, 
     color: theme.colors.text 
   },
-  modalInput: {
-    width: '100%',
-    marginBottom: 25,
+  modalInput: { 
+    width: '100%', 
+    marginBottom: 25 
   },
-  modalBtn: {
-    width: '100%',
-    height: 44,
-    marginBottom: 10,
+  modalBtn: { 
+    width: '100%', 
+    height: 44, 
+    marginBottom: 10 
   },
-  customActionBtn: {
-    width: '100%',
-    height: 44,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
+  customActionBtn: { 
+    width: '100%', 
+    height: 44, 
+    borderRadius: 8, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 10 
   },
-  customActionBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 16,
+  customActionBtnText: { 
+    color: '#FFF', 
+    fontWeight: '700', 
+    fontSize: 16 
   },
   alertSub: { 
     textAlign: 'center', 
@@ -961,59 +1151,59 @@ const styles = StyleSheet.create({
   },
   cancelText: { 
     color: theme.colors.subtext, 
-    fontWeight: '600',
-    padding: 10,
-    marginTop: 5,
+    fontWeight: '600', 
+    padding: 10, 
+    marginTop: 5 
   },
-  itineraryCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    backgroundColor: theme.colors.muted,
-    borderRadius: 12,
-    marginBottom: 10,
+  itineraryCard: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 15, 
+    backgroundColor: theme.colors.muted, 
+    borderRadius: 12, 
+    marginBottom: 10 
   },
-  itineraryInfo: {
-    flex: 1,
+  itineraryInfo: { 
+    flex: 1 
   },
-  itineraryNameText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.text,
+  itineraryNameText: { 
+    fontSize: 16, 
+    fontWeight: '700', 
+    color: theme.colors.text 
   },
-  itineraryDateText: {
-    fontSize: 12,
-    color: theme.colors.subtext,
-    marginTop: 4,
+  itineraryDateText: { 
+    fontSize: 12, 
+    color: theme.colors.subtext, 
+    marginTop: 4 
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingBottom: 50,
+  emptyContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingBottom: 50 
   },
-  emptyText: {
-    marginTop: 10,
-    color: theme.colors.subtext,
-    fontSize: 16,
+  emptyText: { 
+    marginTop: 10, 
+    color: theme.colors.subtext, 
+    fontSize: 16 
   },
-  itineraryCardContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+  itineraryCardContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 10 
   },
-  itineraryDeleteBtn: {
-    padding: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+  itineraryDeleteBtn: { 
+    padding: 10, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
   },
-  swipeDeleteAction: {
-    backgroundColor: theme.colors.error,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    width: 79,
-    borderRadius: theme.radius.md,
-    paddingRight: 25,
+  swipeDeleteAction: { 
+    backgroundColor: theme.colors.error, 
+    justifyContent: 'center', 
+    alignItems: 'flex-end', 
+    width: 79, 
+    borderRadius: theme.radius.md, 
+    paddingRight: 25 
   }
 });

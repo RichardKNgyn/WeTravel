@@ -5,6 +5,7 @@ export type Trip = {
   id: string;
   location_name: string;
   address: string;
+  planned_date: string | null;
   planned_time: string | null;
   duration_hours: number | null;
   note: string;
@@ -14,6 +15,7 @@ export type Trip = {
   longitude: number | null;
   status: string | null;
   actual_arrival_time: string | null;
+  opening_hours: string | null;
 };
 
 export type Itinerary = {
@@ -44,6 +46,7 @@ export async function initDB(): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       location_name TEXT NOT NULL,
       address TEXT NOT NULL,
+      planned_date TEXT,
       planned_time TEXT,
       duration_hours REAL,
       note TEXT NOT NULL,
@@ -52,7 +55,8 @@ export async function initDB(): Promise<void> {
       latitude REAL,
       longitude REAL,
       status TEXT,
-      actual_arrival_time TEXT
+      actual_arrival_time TEXT,
+      opening_hours TEXT
     );
 
     CREATE TABLE IF NOT EXISTS itineraries (
@@ -66,6 +70,7 @@ export async function initDB(): Promise<void> {
       itinerary_id TEXT NOT NULL,
       location_name TEXT NOT NULL,
       address TEXT NOT NULL,
+      planned_date TEXT,
       planned_time TEXT,
       duration_hours REAL,
       note TEXT NOT NULL,
@@ -73,9 +78,16 @@ export async function initDB(): Promise<void> {
       order_index INTEGER NOT NULL,
       latitude REAL,
       longitude REAL,
+      opening_hours TEXT,
       FOREIGN KEY (itinerary_id) REFERENCES itineraries(id) ON DELETE CASCADE
     );
   `);
+
+  try { await db.execAsync('ALTER TABLE trips ADD COLUMN planned_date TEXT;'); } catch (e) {}
+  try { await db.execAsync('ALTER TABLE trips ADD COLUMN opening_hours TEXT;'); } catch (e) {}
+  
+  try { await db.execAsync('ALTER TABLE saved_destinations ADD COLUMN planned_date TEXT;'); } catch (e) {}
+  try { await db.execAsync('ALTER TABLE saved_destinations ADD COLUMN opening_hours TEXT;'); } catch (e) {}
 }
 
 export async function getTrips(): Promise<Trip[]> {
@@ -98,14 +110,15 @@ export async function saveTrip(trip: Trip): Promise<void> {
   if (!db) return;
   await db.runAsync(
     `INSERT OR REPLACE INTO trips (
-      id, location_name, address, planned_time, duration_hours,
+      id, location_name, address, planned_date, planned_time, duration_hours,
       note, location_place_id, order_index, latitude, longitude,
-      status, actual_arrival_time
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      status, actual_arrival_time, opening_hours
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       trip.id,
       trip.location_name || "",
       trip.address || "",
+      trip.planned_date ?? null,
       trip.planned_time ?? null,
       trip.duration_hours ?? null,
       trip.note || "",
@@ -115,6 +128,7 @@ export async function saveTrip(trip: Trip): Promise<void> {
       trip.longitude ?? null,
       trip.status ?? null,
       trip.actual_arrival_time ?? null,
+      trip.opening_hours ?? null,
     ]
   );
 }
@@ -160,22 +174,24 @@ export async function saveFullItinerary(name: string, destinations: Trip[]): Pro
   for (const dest of destinations) {
     await db.runAsync(
       `INSERT INTO saved_destinations (
-        id, itinerary_id, location_name, address, 
+        id, itinerary_id, location_name, address, planned_date,
         planned_time, duration_hours, note, location_place_id, 
-        order_index, latitude, longitude
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, 
+        order_index, latitude, longitude, opening_hours
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`, 
       [
         (Date.now() + Math.random()).toString(), 
         itineraryId, 
         dest.location_name || "", 
         dest.address || "", 
+        dest.planned_date ?? null,
         dest.planned_time ?? null, 
         dest.duration_hours ?? null, 
         dest.note || "", 
         dest.location_place_id || "", 
         dest.order_index ?? 0, 
         dest.latitude ?? null, 
-        dest.longitude ?? null
+        dest.longitude ?? null,
+        dest.opening_hours ?? null
       ]
     );
   }
