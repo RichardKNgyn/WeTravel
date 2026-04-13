@@ -1,14 +1,16 @@
-import React, { useMemo, useState } from "react";
-import { View, TextInput, StyleSheet, FlatList, Text } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "../../constants/theme";
-import PostCard from "../../components/PostCard";
-import { usePosts } from "../../hooks/use-posts";
 import { Ionicons } from "@expo/vector-icons";
+import React, { useMemo, useState } from "react";
+import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import PostCard from "../../components/PostCard";
+import { theme } from "../../constants/theme";
+import { useNetwork } from "../../hooks/use-network";
+import { usePosts } from "../../hooks/use-posts";
 
 export default function Feed() {
   const [query, setQuery] = useState("");
   const { posts } = usePosts();
+  const { isOnline } = useNetwork();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -23,6 +25,11 @@ export default function Feed() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
+      {!isOnline && (
+        <View style={{ backgroundColor: '#FFC107', padding: 10, alignItems: 'center' }}>
+          <Text style={{ color: '#000', fontWeight: '600' }}>You are offline — showing cached posts</Text>
+        </View>
+      )}
       <View style={styles.container}>
         <View style={styles.searchRow}>
           <Ionicons name="search-outline" size={18} color={theme.colors.subtext} />

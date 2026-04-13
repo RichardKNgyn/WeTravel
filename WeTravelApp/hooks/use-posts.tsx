@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { getCachedPosts, saveAllCachedPosts, saveCachedPost, type CachedPost } from './use-offline-db';
 
 export type Comment = {
   id: string;
@@ -110,8 +111,56 @@ export function PostsProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState<Post[]>(INITIAL_POSTS);
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    const setup = async () => {
+      const cachedPosts = await getCachedPosts();
+      if (cachedPosts.length === 0) {
+        setPosts(INITIAL_POSTS);
+        const cached: CachedPost[] = INITIAL_POSTS.map(p => ({
+          id: p.id,
+          author: p.author,
+          location: p.location || null,
+          images: JSON.stringify(p.images),
+          title: p.title,
+          description: p.description,
+          likes: p.likes,
+          comments: JSON.stringify(p.comments),
+          createdAt: p.createdAt,
+        }));
+        await saveAllCachedPosts(cached);
+      } else {
+        const loadedPosts: Post[] = cachedPosts.map(cp => ({
+          id: cp.id,
+          author: cp.author,
+          location: cp.location || undefined,
+          images: JSON.parse(cp.images),
+          title: cp.title,
+          description: cp.description,
+          likes: cp.likes,
+          comments: JSON.parse(cp.comments),
+          createdAt: cp.createdAt,
+        }));
+        setPosts(loadedPosts);
+      }
+    };
+    setup();
+  }, []);
+
   const addPost = (post: Omit<Post, 'comments'> & { comments?: Comment[] }) => {
-    setPosts((prev) => [{ ...post, comments: post.comments ?? [] }, ...prev]);
+    const newPost = { ...post, comments: post.comments ?? [] };
+    setPosts((prev) => [newPost, ...prev]);
+    const cached: CachedPost = {
+      id: newPost.id,
+      author: newPost.author,
+      location: newPost.location || null,
+      images: JSON.stringify(newPost.images),
+      title: newPost.title,
+      description: newPost.description,
+      likes: newPost.likes,
+      comments: JSON.stringify(newPost.comments),
+      createdAt: newPost.createdAt,
+    };
+    saveCachedPost(cached);
   };
 
   const toggleLike = (postId: string) => {

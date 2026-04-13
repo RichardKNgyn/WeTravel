@@ -18,6 +18,18 @@ export type Trip = {
   opening_hours: string | null;
 };
 
+export type CachedPost = {
+  id: string;
+  author: string;
+  location: string | null;
+  images: string;
+  title: string;
+  description: string;
+  likes: number;
+  comments: string;
+  createdAt: string;
+};
+
 export type Itinerary = {
   id: string;
   name: string;
@@ -80,6 +92,18 @@ export async function initDB(): Promise<void> {
       longitude REAL,
       opening_hours TEXT,
       FOREIGN KEY (itinerary_id) REFERENCES itineraries(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS cached_posts (
+      id TEXT PRIMARY KEY NOT NULL,
+      author TEXT NOT NULL,
+      location TEXT,
+      images TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      likes INTEGER NOT NULL,
+      comments TEXT NOT NULL,
+      createdAt TEXT NOT NULL
     );
   `);
 
@@ -226,4 +250,47 @@ export async function deleteFullItinerary(id: string): Promise<void> {
   }
   if (!db) return;
   await db.runAsync('DELETE FROM itineraries WHERE id = ?;', [id]);
+}
+
+export async function getCachedPosts(): Promise<CachedPost[]> {
+  if (Platform.OS === 'web') return JSON.parse(localStorage.getItem('cached_posts') || '[]');
+  if (!db) return [];
+  return db.getAllAsync<CachedPost>(
+    'SELECT * FROM cached_posts ORDER BY createdAt DESC;'
+  );
+}
+
+export async function saveCachedPost(post: CachedPost): Promise<void> {
+  if (Platform.OS === 'web') {
+    const posts = await getCachedPosts();
+    const existingIndex = posts.findIndex(p => p.id === post.id);
+    if (existingIndex >= 0) posts[existingIndex] = post;
+    else posts.push(post);
+    localStorage.setItem('cached_posts', JSON.stringify(posts));
+    return;
+  }
+  if (!db) return;
+  await db.runAsync(
+    `INSERT OR REPLACE INTO cached_posts (
+      id, author, location, images, title, description, likes, comments, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      post.id,
+      post.author,
+      post.location,
+      post.images,
+      post.title,
+      post.description,
+      post.likes,
+      post.comments,
+      post.createdAt,
+    ]
+  );
+}
+
+export async function saveAllCachedPosts(posts: CachedPost[]): Promise<void> {
+  if (Platform.OS === 'web') return localStorage.setItem('cached_posts', JSON.stringify(posts));
+  if (!db) return;
+  await db.runAsync('DELETE FROM cached_posts;');
+  for (const post of posts) await saveCachedPost(post);
 }
