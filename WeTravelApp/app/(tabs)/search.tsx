@@ -122,34 +122,13 @@ export default function Search() {
     };
   }, []);
 
-  // Update globe points whenever filtered data changes
+  // Clear any point markers — locations are shown via labels instead
   useEffect(() => {
     if (!globeReady || Platform.OS !== "web") return;
     const globe = globeRef.current;
     if (!globe) return;
-
-    const maxWeight = Math.max(...filteredData.map((d) => d.weight), 1);
-
-    globe
-      .pointsData(filteredData)
-      .pointLat("lat")
-      .pointLng("lng")
-      .pointAltitude((d: LocationPoint) => 0.015 + (d.weight / maxWeight) * 0.055)
-      .pointRadius((d: LocationPoint) => 0.35 + (d.weight / maxWeight) * 0.7)
-      .pointColor(() => "#e07b54")
-      .pointLabel((d: LocationPoint) =>
-        `<div style="color:#fff;font-weight:700;font-size:13px;background:rgba(0,0,0,0.75);padding:5px 10px;border-radius:8px;border:1px solid rgba(224,123,84,0.5)">${d.name}</div>`
-      )
-      .onPointClick((d: any) => {
-        onMarkerClickRef.current(d as LocationPoint);
-        if (globeRef.current) {
-          globeRef.current.controls().autoRotate = false;
-          setTimeout(() => {
-            if (globeRef.current) globeRef.current.controls().autoRotate = true;
-          }, 5000);
-        }
-      });
-  }, [filteredData, globeReady]);
+    globe.pointsData([]);
+  }, [globeReady]);
 
   if (Platform.OS !== "web") {
     return (
