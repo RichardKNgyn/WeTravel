@@ -292,7 +292,11 @@ export default function Search() {
         {searchResults.length > 0 && (
           <View style={styles.dropdown}>
             {searchResults.map((result) => (
-              <Pressable key={`${result.tier}-${result.name}`} style={styles.dropdownRow}>
+              <Pressable
+                key={`${result.tier}-${result.name}`}
+                style={styles.dropdownRow}
+                onPress={() => flyToGlobe(result.lat, result.lng)}
+              >
                 <Text style={styles.dropdownIcon}>
                   {result.tier === "continent" ? "🌍" : result.tier === "country" ? "🏳️" : "📍"}
                 </Text>
