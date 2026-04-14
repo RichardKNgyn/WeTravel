@@ -203,7 +203,8 @@ export default function Search() {
         >
           {selectedLocation && (
             <>
-              {/* Panel header */}
+              <View style={styles.panelHandle} />
+
               <View style={styles.panelHeader}>
                 <View>
                   <Text style={styles.panelTitle}>{selectedLocation.name}</Text>
@@ -256,6 +257,7 @@ export default function Search() {
                       )}
                     </View>
                   ))}
+                <View style={{ height: 24 }} />
               </ScrollView>
             </>
           )}
@@ -319,24 +321,33 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 2000,
     backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: "60%",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 16,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 20,
     overflow: "hidden",
   } as any,
 
+  panelHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.15)",
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 4,
+  },
   panelHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
+    paddingTop: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.07)",
   },
