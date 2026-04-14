@@ -199,6 +199,32 @@ export default function Search() {
           </View>
         </View>
 
+        {/* Destinations legend strip — visible when no panel is open */}
+        {!selectedLocation && locationData.length > 0 && (
+          <View style={styles.legendStrip}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.legendContent}
+            >
+              {[...locationData]
+                .sort((a, b) => b.posts.length - a.posts.length)
+                .map((loc) => (
+                  <Pressable
+                    key={loc.name}
+                    style={styles.legendChip}
+                    onPress={() => onMarkerClickRef.current(loc)}
+                  >
+                    <Text style={styles.legendChipName}>{loc.name}</Text>
+                    <View style={styles.legendChipBadge}>
+                      <Text style={styles.legendChipCount}>{loc.posts.length}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Backdrop — tap outside panel to dismiss */}
         {selectedLocation && (
           <Pressable style={styles.backdrop} onPress={() => setSelectedLocation(null)} />
@@ -312,6 +338,48 @@ const styles = StyleSheet.create({
     outlineWidth: 0,
     outline: "none",
   } as any,
+
+  legendStrip: {
+    position: "absolute",
+    bottom: 24,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  } as any,
+  legendContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  legendChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.13)",
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingLeft: 14,
+    paddingRight: 10,
+    gap: 8,
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  } as any,
+  legendChipName: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  legendChipBadge: {
+    backgroundColor: "#e07b54",
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  legendChipCount: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "800",
+  },
 
   backdrop: {
     position: "absolute",
