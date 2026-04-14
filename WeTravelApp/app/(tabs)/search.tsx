@@ -104,7 +104,7 @@ export default function Search() {
         globe.controls().autoRotate = true;
         globe.controls().autoRotateSpeed = 0.35;
         globe.controls().enableZoom = true;
-        globe.controls().minDistance = 150;
+        globe.controls().minDistance = 101;
         globe.controls().maxDistance = 800;
 
         globeRef.current = globe;
