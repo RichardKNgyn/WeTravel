@@ -44,6 +44,17 @@ export default function Search() {
   const findLocationByName = (name: string): LocationPoint | undefined =>
     locationData.find((d) => d.name.toLowerCase() === name.toLowerCase());
 
+  // Animate the globe camera to a lat/lng position
+  const flyToGlobe = (lat: number, lng: number, altitude = 2.0, duration = 1500) => {
+    const globe = globeRef.current;
+    if (!globe) return;
+    globe.controls().autoRotate = false;
+    globe.pointOfView({ lat, lng, altitude }, duration);
+    setTimeout(() => {
+      if (globeRef.current) globeRef.current.controls().autoRotate = true;
+    }, duration + 300);
+  };
+
   useEffect(() => {
     Animated.spring(panelAnim, {
       toValue: selectedLocation ? 1 : 0,
