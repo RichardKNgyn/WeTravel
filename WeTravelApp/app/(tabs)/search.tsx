@@ -288,6 +288,28 @@ export default function Search() {
           </View>
         </View>
 
+        {/* Search results dropdown */}
+        {searchResults.length > 0 && (
+          <View style={styles.dropdown}>
+            {searchResults.map((result) => (
+              <Pressable key={`${result.tier}-${result.name}`} style={styles.dropdownRow}>
+                <Text style={styles.dropdownIcon}>
+                  {result.tier === "continent" ? "🌍" : result.tier === "country" ? "🏳️" : "📍"}
+                </Text>
+                <View style={styles.dropdownText}>
+                  <Text style={styles.dropdownName}>{result.name}</Text>
+                  <Text style={styles.dropdownSub}>{result.tier}</Text>
+                </View>
+                {result.postCount !== undefined && (
+                  <View style={styles.dropdownBadge}>
+                    <Text style={styles.dropdownBadgeText}>{result.postCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {/* Destinations legend strip — visible when no panel is open */}
         {!selectedLocation && locationData.length > 0 && (
           <View style={styles.legendStrip}>
@@ -436,6 +458,51 @@ const styles = StyleSheet.create({
     outlineWidth: 0,
     outline: "none",
   } as any,
+
+  dropdown: {
+    position: "absolute",
+    top: 72,
+    left: 16,
+    right: 16,
+    zIndex: 1100,
+    backgroundColor: "rgba(10,10,30,0.92)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+  } as any,
+  dropdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.07)",
+  },
+  dropdownIcon: { fontSize: 16, width: 22, textAlign: "center" } as any,
+  dropdownText: { flex: 1 },
+  dropdownName: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  dropdownSub: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "capitalize",
+    marginTop: 1,
+  } as any,
+  dropdownBadge: {
+    backgroundColor: "#e07b54",
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  dropdownBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
 
   legendStrip: {
     position: "absolute",
