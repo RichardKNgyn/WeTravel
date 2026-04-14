@@ -191,8 +191,9 @@ export default function Search() {
       .labelDotOrientation(() => "right")
       .onLabelClick((d: any) => {
         // Match the clicked label against post locations — works at all zoom tiers
-        const match = findLocationByName(d.name);
-        if (!match) return;
+        const match = findLocationByName(d.name) ?? {
+          name: d.name, lat: d.lat, lng: d.lng, weight: 0, posts: [],
+        };
         onMarkerClickRef.current(match);
         if (globeRef.current) {
           globeRef.current.controls().autoRotate = false;
@@ -296,6 +297,15 @@ export default function Search() {
               </View>
 
               <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
+                {selectedLocation.posts.length === 0 && (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateIcon}>🌍</Text>
+                    <Text style={styles.emptyStateTitle}>No posts yet</Text>
+                    <Text style={styles.emptyStateMsg}>
+                      Be the first to share a trip to {selectedLocation.name}!
+                    </Text>
+                  </View>
+                )}
                 {[...selectedLocation.posts]
                   .sort((a, b) => b.likes - a.likes)
                   .map((post) => (
@@ -515,6 +525,22 @@ const styles = StyleSheet.create({
   commentRow: { flexDirection: "row", gap: 6 },
   commentAuthor: { fontSize: 12, fontWeight: "700", color: theme.colors.text },
   commentText: { fontSize: 12, color: theme.colors.subtext, flex: 1 },
+
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  emptyStateIcon: { fontSize: 40 },
+  emptyStateTitle: { fontSize: 16, fontWeight: "800", color: theme.colors.text },
+  emptyStateMsg: {
+    fontSize: 13,
+    color: theme.colors.subtext,
+    textAlign: "center",
+    lineHeight: 18,
+  },
 
   fallback: { flex: 1, alignItems: "center", justifyContent: "center" },
   fallbackText: { color: theme.colors.subtext, fontWeight: "700", fontSize: 16 },
