@@ -40,6 +40,10 @@ export default function Search() {
     setSelectedLocation(loc);
   };
 
+  // Case-insensitive lookup of any label name against post location data
+  const findLocationByName = (name: string): LocationPoint | undefined =>
+    locationData.find((d) => d.name.toLowerCase() === name.toLowerCase());
+
   useEffect(() => {
     Animated.spring(panelAnim, {
       toValue: selectedLocation ? 1 : 0,
@@ -186,9 +190,10 @@ export default function Search() {
       .labelDotRadius((d: any) => d._dotRadius ?? dotRadius)
       .labelDotOrientation(() => "right")
       .onLabelClick((d: any) => {
-        // Only post-location labels (close zoom) open the panel
-        if (zoomDist > MID) return;
-        onMarkerClickRef.current(d as LocationPoint);
+        // Match the clicked label against post locations — works at all zoom tiers
+        const match = findLocationByName(d.name);
+        if (!match) return;
+        onMarkerClickRef.current(match);
         if (globeRef.current) {
           globeRef.current.controls().autoRotate = false;
           setTimeout(() => {
