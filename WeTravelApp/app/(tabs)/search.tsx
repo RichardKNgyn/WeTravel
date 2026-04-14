@@ -324,7 +324,6 @@ export default function Search() {
                   .sort((a, b) => b.likes - a.likes)
                   .map((post) => (
                     <View key={post.id} style={styles.postCard}>
-                      {/* Post header */}
                       <View style={styles.postMeta}>
                         <View style={styles.postAvatar}>
                           <Text style={styles.postAvatarText}>
@@ -341,12 +340,10 @@ export default function Search() {
                         </View>
                       </View>
 
-                      {/* Post body */}
                       {post.description ? (
                         <Text style={styles.postContent}>{post.description}</Text>
                       ) : null}
 
-                      {/* Comments */}
                       {post.comments.length > 0 && (
                         <View style={styles.commentsSection}>
                           {post.comments.map((c, i) => (
