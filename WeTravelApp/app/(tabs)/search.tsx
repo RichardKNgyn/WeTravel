@@ -122,13 +122,42 @@ export default function Search() {
     };
   }, []);
 
-  // Clear any point markers — locations are shown via labels instead
+  // Clear point markers — locations are shown via labels instead
   useEffect(() => {
     if (!globeReady || Platform.OS !== "web") return;
     const globe = globeRef.current;
     if (!globe) return;
     globe.pointsData([]);
   }, [globeReady]);
+
+  // Render always-visible text labels on the globe surface
+  useEffect(() => {
+    if (!globeReady || Platform.OS !== "web") return;
+    const globe = globeRef.current;
+    if (!globe) return;
+
+    const maxWeight = Math.max(...filteredData.map((d) => d.weight), 1);
+
+    globe
+      .labelsData(filteredData)
+      .labelLat("lat")
+      .labelLng("lng")
+      .labelText("name")
+      .labelSize((d: LocationPoint) => 0.5 + (d.weight / maxWeight) * 0.6)
+      .labelColor(() => "#ffffff")
+      .labelResolution(3)
+      .labelDotRadius((d: LocationPoint) => 0.3 + (d.weight / maxWeight) * 0.3)
+      .labelDotOrientation(() => "right")
+      .onLabelClick((d: any) => {
+        onMarkerClickRef.current(d as LocationPoint);
+        if (globeRef.current) {
+          globeRef.current.controls().autoRotate = false;
+          setTimeout(() => {
+            if (globeRef.current) globeRef.current.controls().autoRotate = true;
+          }, 5000);
+        }
+      });
+  }, [filteredData, globeReady]);
 
   if (Platform.OS !== "web") {
     return (
