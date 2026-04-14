@@ -296,6 +296,7 @@ export default function Search() {
                 key={`${result.tier}-${result.name}`}
                 style={styles.dropdownRow}
                 onPress={() => {
+                  setQuery("");
                   flyToGlobe(result.lat, result.lng);
                   const match = findLocationByName(result.name) ?? {
                     name: result.name, lat: result.lat, lng: result.lng, weight: 0, posts: [],
