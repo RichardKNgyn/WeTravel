@@ -269,7 +269,7 @@ export default function Search() {
                   <Pressable
                     key={loc.name}
                     style={styles.legendChip}
-                    onPress={() => onMarkerClickRef.current(loc)}
+                    onPress={() => flyToGlobe(loc.lat, loc.lng)}
                   >
                     <Text style={styles.legendChipName}>{loc.name}</Text>
                     <View style={styles.legendChipBadge}>
