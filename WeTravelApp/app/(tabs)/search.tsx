@@ -183,22 +183,12 @@ export default function Search() {
               placeholderTextColor={theme.colors.subtext}
               style={styles.searchInput}
             />
+            {query.length > 0 && (
+              <Pressable onPress={() => setQuery("")} hitSlop={8}>
+                <Ionicons name="close-circle" size={18} color={theme.colors.subtext} />
+              </Pressable>
+            )}
           </View>
-        </View>
-
-        {/* Legend */}
-        <View style={styles.legend}>
-          <Text style={styles.legendTitle}>Popularity</Text>
-          {[
-            { color: "#ff0000", label: "Very Popular" },
-            { color: "#ff8800", label: "Popular" },
-            { color: "#ffff00", label: "Visited" },
-          ].map(({ color, label }) => (
-            <View key={label} style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: color }]} />
-              <Text style={styles.legendLabel}>{label}</Text>
-            </View>
-          ))}
         </View>
 
         {/* Backdrop — tap outside panel to dismiss */}
@@ -309,39 +299,6 @@ const styles = StyleSheet.create({
     outlineWidth: 0,
     outline: "none",
   } as any,
-
-  legend: {
-    position: "absolute",
-    bottom: 32,
-    right: 16,
-    zIndex: 1000,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-    gap: 6,
-  } as any,
-  legendTitle: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: theme.colors.text,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-  },
-  legendLabel: { fontSize: 11, fontWeight: "600", color: theme.colors.subtext },
 
   backdrop: {
     position: "absolute",
