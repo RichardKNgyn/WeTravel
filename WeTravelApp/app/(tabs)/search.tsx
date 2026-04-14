@@ -18,6 +18,14 @@ import { CONTINENTS, COUNTRIES, type GeoLabel } from "../../data/geo-labels";
 
 const GLOBE_ID = "wetravel-globe";
 
+type SearchResult = {
+  name: string;
+  lat: number;
+  lng: number;
+  tier: "location" | "country" | "continent";
+  postCount?: number;
+};
+
 type LocationPoint = {
   name: string;
   lat: number;
@@ -84,6 +92,31 @@ export default function Search() {
     if (!q) return locationData;
     return locationData.filter((d) => d.name.toLowerCase().includes(q));
   }, [locationData, query]);
+
+  // Search results span all three tiers: post locations → countries → continents
+  const searchResults = useMemo<SearchResult[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const results: SearchResult[] = [];
+
+    locationData
+      .filter((d) => d.name.toLowerCase().includes(q))
+      .forEach((d) =>
+        results.push({ name: d.name, lat: d.lat, lng: d.lng, tier: "location", postCount: d.posts.length })
+      );
+
+    COUNTRIES
+      .filter((c) => c.name.toLowerCase().includes(q) && !results.find((r) => r.name.toLowerCase() === c.name.toLowerCase()))
+      .slice(0, 6)
+      .forEach((c) => results.push({ name: c.name, lat: c.lat, lng: c.lng, tier: "country" }));
+
+    CONTINENTS
+      .filter((c) => c.name.toLowerCase().includes(q) && !results.find((r) => r.name.toLowerCase() === c.name.toLowerCase()))
+      .forEach((c) => results.push({ name: c.name, lat: c.lat, lng: c.lng, tier: "continent" }));
+
+    return results.slice(0, 8);
+  }, [query, locationData]);
 
   // Load Globe.gl and initialize the 3D globe
   useEffect(() => {
