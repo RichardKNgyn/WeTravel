@@ -175,17 +175,17 @@ export default function Search() {
         {/* Search bar */}
         <View style={styles.searchBox}>
           <View style={styles.searchRow}>
-            <Ionicons name="search-outline" size={18} color={theme.colors.subtext} />
+            <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.7)" />
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Search destinations..."
-              placeholderTextColor={theme.colors.subtext}
+              placeholderTextColor="rgba(255,255,255,0.45)"
               style={styles.searchInput}
             />
             {query.length > 0 && (
               <Pressable onPress={() => setQuery("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color={theme.colors.subtext} />
+                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.6)" />
               </Pressable>
             )}
           </View>
@@ -266,7 +266,7 @@ export default function Search() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.colors.bg },
+  safe: { flex: 1, backgroundColor: "#00001a" },
   globeWrapper: { flex: 1, position: "relative" } as any,
   globe: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 } as any,
 
@@ -280,21 +280,24 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 14,
     paddingHorizontal: 14,
-    height: 46,
+    height: 48,
     gap: 10,
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-  },
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  } as any,
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: theme.colors.text,
+    color: "#fff",
     fontWeight: "600",
     outlineWidth: 0,
     outline: "none",
