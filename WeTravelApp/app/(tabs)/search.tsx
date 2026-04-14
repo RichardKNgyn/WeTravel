@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { usePosts, type Post } from "../../hooks/use-posts";
 import { theme } from "../../constants/theme";
 import { LOCATION_COORDS } from "../../data/location-coords";
+import { CONTINENTS, COUNTRIES, type GeoLabel } from "../../data/geo-labels";
 
 const GLOBE_ID = "wetravel-globe";
 
@@ -29,6 +30,7 @@ export default function Search() {
   const { posts } = usePosts();
   const [query, setQuery] = useState("");
   const [globeReady, setGlobeReady] = useState(false);
+  const [zoomDist, setZoomDist] = useState(500);
   const [selectedLocation, setSelectedLocation] = useState<LocationPoint | null>(null);
   const panelAnim = useRef(new Animated.Value(0)).current;
   const globeRef = useRef<any>(null);
@@ -107,6 +109,12 @@ export default function Search() {
         globe.controls().minDistance = 101;
         globe.controls().maxDistance = 800;
 
+        // Update zoom distance whenever the camera moves
+        globe.controls().addEventListener("change", () => {
+          const cam = globe.camera();
+          if (cam) setZoomDist(cam.position.length());
+        });
+
         globeRef.current = globe;
         setGlobeReady(true);
       });
@@ -130,25 +138,56 @@ export default function Search() {
     globe.pointsData([]);
   }, [globeReady]);
 
-  // Render always-visible text labels on the globe surface
+  // Zoom thresholds for label tiers
+  // > 320 → continents, 175–320 → countries, ≤ 175 → post locations
+  const FAR = 320;
+  const MID = 175;
+
+  // Render labels based on current zoom distance (level-of-detail)
   useEffect(() => {
     if (!globeReady || Platform.OS !== "web") return;
     const globe = globeRef.current;
     if (!globe) return;
 
-    const maxWeight = Math.max(...filteredData.map((d) => d.weight), 1);
+    let data: GeoLabel[];
+    let dotRadius: number;
+    let textSize: number;
+
+    if (zoomDist > FAR) {
+      // Far: continent names, large text
+      data = CONTINENTS;
+      dotRadius = 0.6;
+      textSize = 1.4;
+    } else if (zoomDist > MID) {
+      // Mid: country names, medium text
+      data = COUNTRIES;
+      dotRadius = 0.4;
+      textSize = 0.7;
+    } else {
+      // Close: post locations, sized by engagement weight
+      const maxWeight = Math.max(...filteredData.map((d) => d.weight), 1);
+      data = filteredData.map((d) => ({
+        ...d,
+        _dotRadius: 0.3 + (d.weight / maxWeight) * 0.3,
+        _size: 0.5 + (d.weight / maxWeight) * 0.5,
+      })) as any;
+      dotRadius = 0.3;
+      textSize = 0.5;
+    }
 
     globe
-      .labelsData(filteredData)
+      .labelsData(data)
       .labelLat("lat")
       .labelLng("lng")
       .labelText("name")
-      .labelSize((d: LocationPoint) => 0.5 + (d.weight / maxWeight) * 0.6)
+      .labelSize((d: any) => d._size ?? textSize)
       .labelColor(() => "#ffffff")
       .labelResolution(3)
-      .labelDotRadius((d: LocationPoint) => 0.3 + (d.weight / maxWeight) * 0.3)
+      .labelDotRadius((d: any) => d._dotRadius ?? dotRadius)
       .labelDotOrientation(() => "right")
       .onLabelClick((d: any) => {
+        // Only post-location labels (close zoom) open the panel
+        if (zoomDist > MID) return;
         onMarkerClickRef.current(d as LocationPoint);
         if (globeRef.current) {
           globeRef.current.controls().autoRotate = false;
@@ -157,7 +196,7 @@ export default function Search() {
           }, 5000);
         }
       });
-  }, [filteredData, globeReady]);
+  }, [filteredData, globeReady, zoomDist]);
 
   if (Platform.OS !== "web") {
     return (
