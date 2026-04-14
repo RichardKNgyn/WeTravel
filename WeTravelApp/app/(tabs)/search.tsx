@@ -15,7 +15,7 @@ import { usePosts, type Post } from "../../hooks/use-posts";
 import { theme } from "../../constants/theme";
 import { LOCATION_COORDS } from "../../data/location-coords";
 
-const MAP_ID = "wetravel-heatmap";
+const GLOBE_ID = "wetravel-globe";
 
 type LocationPoint = {
   name: string;
@@ -28,21 +28,16 @@ type LocationPoint = {
 export default function Search() {
   const { posts } = usePosts();
   const [query, setQuery] = useState("");
-  const [mapReady, setMapReady] = useState(false);
+  const [globeReady, setGlobeReady] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationPoint | null>(null);
   const panelAnim = useRef(new Animated.Value(0)).current;
-  const mapRef = useRef<any>(null);
-  const heatRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  // Ref so Leaflet event handlers always see the latest callback
+  const globeRef = useRef<any>(null);
   const onMarkerClickRef = useRef<(loc: LocationPoint) => void>(() => {});
 
-  // Keep the ref up-to-date
   onMarkerClickRef.current = (loc: LocationPoint) => {
     setSelectedLocation(loc);
   };
 
-  // Animate panel in/out when selectedLocation changes
   useEffect(() => {
     Animated.spring(panelAnim, {
       toValue: selectedLocation ? 1 : 0,
@@ -51,7 +46,6 @@ export default function Search() {
     }).start();
   }, [selectedLocation]);
 
-  // Build location points from posts
   const locationData = useMemo<LocationPoint[]>(() => {
     const acc: Record<string, LocationPoint> = {};
     for (const post of posts) {
@@ -68,34 +62,15 @@ export default function Search() {
     return Object.values(acc);
   }, [posts]);
 
-  // Filter by search query
   const filteredData = useMemo<LocationPoint[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return locationData;
     return locationData.filter((d) => d.name.toLowerCase().includes(q));
   }, [locationData, query]);
 
-  // Load Leaflet and initialize map
+  // Load Globe.gl and initialize the 3D globe
   useEffect(() => {
     if (Platform.OS !== "web") return;
-
-    const injectCSS = () => {
-      if (document.getElementById("leaflet-css")) return;
-      const link = document.createElement("link");
-      link.id = "leaflet-css";
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(link);
-
-      // Ensure full-height layout chain so the map fills the screen
-      const fix = document.createElement("style");
-      fix.id = "wetravel-map-fix";
-      fix.textContent = `
-        html, body { height: 100% !important; margin: 0; }
-        #${MAP_ID} { position: absolute !important; top: 0; left: 0; right: 0; bottom: 0; width: 100% !important; height: 100% !important; }
-      `;
-      document.head.appendChild(fix);
-    };
 
     const loadScript = (id: string, src: string): Promise<void> =>
       new Promise((resolve) => {
@@ -108,85 +83,79 @@ export default function Search() {
       });
 
     const init = async () => {
-      injectCSS();
-      await loadScript("leaflet-js", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
-      await loadScript("leaflet-heat", "https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js");
+      await loadScript("globe-gl", "https://unpkg.com/globe.gl/dist/globe.gl.min.js");
 
-      const el = document.getElementById(MAP_ID);
-      if (!el || mapRef.current) return;
+      requestAnimationFrame(() => {
+        const el = document.getElementById(GLOBE_ID);
+        if (!el || globeRef.current) return;
 
-      const L = (window as any).L;
-      // Disable default zoom control so we can place it at bottom-left
-      const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([20, 10], 2);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 18,
-      }).addTo(map);
+        const Globe = (window as any).Globe;
+        if (!Globe) return;
 
-      // Place zoom controls at bottom-left, clear of the search bar
-      L.control.zoom({ position: "bottomleft" }).addTo(map);
+        const globe = Globe()(el);
+        globe
+          .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
+          .bumpImageUrl("https://unpkg.com/three-globe/example/img/earth-topology.png")
+          .backgroundImageUrl("https://unpkg.com/three-globe/example/img/night-sky.png")
+          .showAtmosphere(true)
+          .atmosphereColor("#4a90d9")
+          .atmosphereAltitude(0.18);
 
-      mapRef.current = map;
-      setMapReady(true);
+        globe.controls().autoRotate = true;
+        globe.controls().autoRotateSpeed = 0.35;
+        globe.controls().enableZoom = true;
+        globe.controls().minDistance = 150;
+        globe.controls().maxDistance = 800;
+
+        globeRef.current = globe;
+        setGlobeReady(true);
+      });
     };
 
     init();
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        heatRef.current = null;
-        markersRef.current = [];
-        setMapReady(false);
+      if (globeRef.current) {
+        globeRef.current = null;
+        setGlobeReady(false);
       }
     };
   }, []);
 
-  // Update heatmap + markers when data changes
+  // Update globe points whenever filtered data changes
   useEffect(() => {
-    if (!mapReady || Platform.OS !== "web") return;
-    const L = (window as any).L;
-    const map = mapRef.current;
-    if (!L || !map) return;
-
-    if (heatRef.current) map.removeLayer(heatRef.current);
-    markersRef.current.forEach((m) => map.removeLayer(m));
-    markersRef.current = [];
-
-    if (filteredData.length === 0) return;
+    if (!globeReady || Platform.OS !== "web") return;
+    const globe = globeRef.current;
+    if (!globe) return;
 
     const maxWeight = Math.max(...filteredData.map((d) => d.weight), 1);
 
-    // Heatmap layer
-    const heatData = filteredData.map((d) => [d.lat, d.lng, d.weight / maxWeight]);
-    heatRef.current = L.heatLayer(heatData, {
-      radius: 55,
-      blur: 40,
-      maxZoom: 8,
-      gradient: { 0.3: "#ffff00", 0.6: "#ff8800", 1.0: "#ff0000" },
-    }).addTo(map);
-
-    // Markers — click opens the slide-up panel via the ref
-    filteredData.forEach((d) => {
-      const marker = L.circleMarker([d.lat, d.lng], {
-        radius: 8,
-        fillColor: "#e07b54",
-        color: "#fff",
-        weight: 2,
-        fillOpacity: 0.95,
-      })
-        .addTo(map)
-        .on("click", () => onMarkerClickRef.current(d));
-
-      markersRef.current.push(marker);
-    });
-  }, [filteredData, mapReady]);
+    globe
+      .pointsData(filteredData)
+      .pointLat("lat")
+      .pointLng("lng")
+      .pointAltitude((d: LocationPoint) => 0.015 + (d.weight / maxWeight) * 0.055)
+      .pointRadius((d: LocationPoint) => 0.35 + (d.weight / maxWeight) * 0.7)
+      .pointColor(() => "#e07b54")
+      .pointLabel((d: LocationPoint) =>
+        `<div style="color:#fff;font-weight:700;font-size:13px;background:rgba(0,0,0,0.75);padding:5px 10px;border-radius:8px;border:1px solid rgba(224,123,84,0.5)">${d.name}</div>`
+      )
+      .onPointClick((d: any) => {
+        onMarkerClickRef.current(d as LocationPoint);
+        if (globeRef.current) {
+          globeRef.current.controls().autoRotate = false;
+          setTimeout(() => {
+            if (globeRef.current) globeRef.current.controls().autoRotate = true;
+          }, 5000);
+        }
+      });
+  }, [filteredData, globeReady]);
 
   if (Platform.OS !== "web") {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.fallback}>
-          <Text style={styles.fallbackText}>Map view is available on web</Text>
+          <Text style={styles.fallbackText}>Globe view is available on web</Text>
         </View>
       </SafeAreaView>
     );
@@ -199,9 +168,9 @@ export default function Search() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.mapWrapper}>
-        {/* Map */}
-        <View nativeID={MAP_ID} style={styles.map} />
+      <View style={styles.globeWrapper}>
+        {/* Globe canvas */}
+        <View nativeID={GLOBE_ID} style={styles.globe} />
 
         {/* Search bar */}
         <View style={styles.searchBox}>
@@ -308,8 +277,8 @@ export default function Search() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg },
-  mapWrapper: { flex: 1, position: "relative" } as any,
-  map: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 } as any,
+  globeWrapper: { flex: 1, position: "relative" } as any,
+  globe: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 } as any,
 
   searchBox: {
     position: "absolute",
