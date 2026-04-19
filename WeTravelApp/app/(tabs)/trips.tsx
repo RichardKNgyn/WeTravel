@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform, Linking, Alert } from "react-native";
+import * as Location from 'expo-location';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -34,6 +35,9 @@ const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit,
     }
   };
 
+  const isCompleted = item.status === 'Completed';
+  const isActiveStop = item.status === 'Active';
+
   const CardContent = (
     <ScaleDecorator>
       <TouchableOpacity
@@ -48,20 +52,21 @@ const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit,
             backgroundColor: isActive ? theme.colors.muted : theme.colors.white,
             transform: [{ scale: isActive ? 0.98 : 1 }],
             elevation: isActive ? 8 : 4,
-            borderColor: warning ? theme.colors.error : 'transparent', 
-            borderWidth: 1.5, 
+            borderColor: isActiveStop ? theme.colors.primary : warning ? theme.colors.error : 'transparent', 
+            borderWidth: isActiveStop ? 2 : 1.5, 
             borderLeftWidth: 5, 
-            borderLeftColor: warning ? theme.colors.error : theme.colors.primary 
+            borderLeftColor: isCompleted ? theme.colors.subtext : isActiveStop ? theme.colors.primary : warning ? theme.colors.error : theme.colors.primary,
+            opacity: isCompleted ? 0.6 : 1
           },
           isWeb ? ({ cursor: isActive ? 'grabbing' : 'grab' } as any) : null
         ]}
       >
         <View style={styles.dragHandle}>
-          <Ionicons name="menu-outline" size={24} color={warning ? theme.colors.error : theme.colors.subtext} />
+          <Ionicons name="menu-outline" size={24} color={isCompleted ? theme.colors.subtext : warning ? theme.colors.error : theme.colors.subtext} />
         </View>
         
         <View style={styles.details}>
-          <Text style={[styles.locationName, warning && { color: theme.colors.error }]} numberOfLines={1}>
+          <Text style={[styles.locationName, warning && { color: theme.colors.error }, isCompleted && { textDecorationLine: 'line-through' }]} numberOfLines={1}>
             {item.location_name || "Unknown Location"}
           </Text>
           <Text style={styles.time} numberOfLines={1}>
@@ -71,7 +76,13 @@ const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit,
           </Text>
         </View>
 
-        {warning && (
+        {isActiveStop && (
+          <View style={{ paddingHorizontal: 10, justifyContent: 'center' }}>
+            <Ionicons name="navigate-circle" size={24} color={theme.colors.primary} />
+          </View>
+        )}
+
+        {warning && !isCompleted && !isActiveStop && (
           <TouchableOpacity 
             style={{ paddingHorizontal: 10, justifyContent: 'center' }} 
             onPress={handleWarningPress}
@@ -132,6 +143,7 @@ const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit,
     prev.item.planned_date === next.item.planned_date &&
     prev.item.duration_hours === next.item.duration_hours &&
     prev.item.location_name === next.item.location_name &&
+    prev.item.status === next.item.status &&
     prev.warning === next.warning &&
     prev.isActive === next.isActive
   );
@@ -179,6 +191,290 @@ export default function Trips() {
   
   const swipeableRefs = useRef(new Map<string, any>());
   const currentlyOpenId = useRef<string | null>(null);
+
+  const activeStopIndex = data.findIndex(d => d.status === 'Active');
+  const firstPendingIndex = data.findIndex(d => d.status === 'Pending' || !d.status);
+
+  const openNavigation = (dest: TripDestination) => {
+    const query = encodeURIComponent(dest.address || dest.location_name || "");
+    
+    const url = Platform.select({
+      ios: `maps://app?daddr=${query}`,
+      android: `google.navigation:q=${query}`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${query}`
+    });
+    
+    const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${query}`;
+
+    if (url) {
+      Linking.canOpenURL(url).then(supported => {
+        if (supported && Platform.OS !== 'web') {
+          return Linking.openURL(url);
+        } else {
+          return Linking.openURL(webUrl);
+        }
+      }).catch(() => {
+        Linking.openURL(webUrl).catch(() => {}); // Silent catch to prevent any crashes
+      });
+    }
+  };
+
+  const recalculateSchedule = async (dataArray: TripDestination[], startIndex: number, startDateTime: Date, currentLocation?: { latitude: number, longitude: number }) => {
+    let currentDateTime = new Date(startDateTime);
+    const newData = [...dataArray];
+
+    for (let i = startIndex; i < newData.length; i++) {
+      const stop = newData[i];
+      
+      const originalTime = stop.original_planned_time !== undefined ? stop.original_planned_time : stop.planned_time;
+      const originalDate = stop.original_planned_date !== undefined ? stop.original_planned_date : stop.planned_date;
+
+      // Calculate travel time TO this stop
+      let travelSeconds = 0;
+      if (i === startIndex && currentLocation) {
+        const cacheKey = `gps-${currentLocation.latitude},${currentLocation.longitude}-${stop.location_place_id}`;
+        if (travelCache.current[cacheKey] !== undefined) {
+          travelSeconds = travelCache.current[cacheKey];
+        } else {
+          try {
+            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${currentLocation.latitude},${currentLocation.longitude}&destinations=place_id:${stop.location_place_id}&key=${TRIPS_KEY}`;
+            const res = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(url)}` : url);
+            const json = await res.json();
+            travelSeconds = json.rows?.[0]?.elements?.[0]?.duration?.value || 0;
+            travelCache.current[cacheKey] = travelSeconds;
+          } catch (e) {
+            travelSeconds = 0;
+          }
+        }
+      } else if (i > 0) {
+        const prevStop = newData[i - 1];
+        const cacheKey = `${prevStop.location_place_id}-${stop.location_place_id}`;
+        if (travelCache.current[cacheKey] !== undefined) {
+          travelSeconds = travelCache.current[cacheKey];
+        } else {
+          try {
+            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=place_id:${prevStop.location_place_id}&destinations=place_id:${stop.location_place_id}&key=${TRIPS_KEY}`;
+            const res = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(url)}` : url);
+            const json = await res.json();
+            travelSeconds = json.rows?.[0]?.elements?.[0]?.duration?.value || 0;
+            travelCache.current[cacheKey] = travelSeconds;
+          } catch (e) {
+            travelSeconds = 0;
+          }
+        }
+      }
+
+      const travelMins = Math.ceil((travelSeconds || 0) / 60);
+      
+      // Next stop's arrival time
+      const arrivalDateTime = new Date(currentDateTime.getTime() + (travelMins * 60 * 1000));
+      
+      const h = arrivalDateTime.getHours();
+      const m = arrivalDateTime.getMinutes();
+      const period = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 || 12;
+      
+      const y = arrivalDateTime.getFullYear();
+      const mo = (arrivalDateTime.getMonth() + 1).toString().padStart(2, '0');
+      const d = arrivalDateTime.getDate().toString().padStart(2, '0');
+
+      newData[i] = {
+        ...stop,
+        planned_time: `${displayH}:${m.toString().padStart(2, '0')} ${period}`,
+        planned_date: `${y}-${mo}-${d}`,
+        original_planned_time: originalTime,
+        original_planned_date: originalDate
+      };
+
+      const durationHours = stop.duration_hours || 0;
+      
+      // Next stop's start time
+      currentDateTime = new Date(arrivalDateTime.getTime() + (durationHours * 3600 * 1000));
+    }
+    return newData;
+  };
+
+  const checkClosedWarnings = (projectedData: TripDestination[]) => {
+    let closedCount = 0;
+    for (let i = 0; i < projectedData.length; i++) {
+      const stop = projectedData[i] as any;
+      if (stop.status === 'Completed') continue;
+      
+      let arrivalMins = timeToMinutes(stop.planned_time);
+
+      if (stop.opening_hours && stop.planned_date && stop.planned_time) {
+        try {
+          const periods = JSON.parse(stop.opening_hours);
+          const [y, m, d] = stop.planned_date.split('-');
+          const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+          const dayOfWeek = dateObj.getDay();
+          
+          const arrivalTimeStr = `${Math.floor(arrivalMins / 60).toString().padStart(2, '0')}${(arrivalMins % 60).toString().padStart(2, '0')}`;
+          const arrivalTimeNum = parseInt(arrivalTimeStr, 10);
+
+          const dayPeriods = periods.filter((p: any) => p.open.day === dayOfWeek);
+          if (dayPeriods.length > 0) {
+            let isOpen = false;
+            let closeTimeStr = "";
+            for (const p of dayPeriods) {
+              const openTime = parseInt(p.open.time, 10);
+              const closeTime = p.close ? parseInt(p.close.time, 10) : 2359;
+              
+              if (arrivalTimeNum >= openTime && arrivalTimeNum < closeTime) {
+                isOpen = true;
+                break;
+              }
+              if (arrivalTimeNum >= closeTime) {
+                closeTimeStr = p.close.time;
+              }
+            }
+            
+            if (!isOpen && closeTimeStr) {
+              closedCount++;
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    return closedCount;
+  };
+
+  const handleStartTrip = async () => {
+    if (isUnsaved) {
+      alert("Please save your trip before starting.");
+      return;
+    }
+    if (Object.keys(logisticsWarnings).length > 0) {
+      alert("Please resolve schedule conflicts before starting.");
+      return;
+    }
+    
+    if (firstPendingIndex === -1) return;
+    
+    const dest = data[firstPendingIndex];
+    const now = new Date();
+
+    let currentLocation;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({});
+        currentLocation = { latitude: location.coords.latitude, longitude: location.coords.longitude };
+      }
+    } catch (e) {}
+
+    let updatedData = await recalculateSchedule(data, firstPendingIndex, now, currentLocation);
+    
+    const closedCount = checkClosedWarnings(updatedData);
+    if (closedCount > 0) {
+      const msg = `Starting now will result in ${closedCount} destination(s) being closed when you arrive. Do you still want to start?`;
+      if (Platform.OS === 'web') {
+        if (!window.confirm(msg)) return;
+      } else {
+        Alert.alert(
+          "Destinations Closed",
+          msg,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Start Anyway", onPress: () => finalizeStartTrip(updatedData, dest, now) }
+          ]
+        );
+        return;
+      }
+    }
+    
+    await finalizeStartTrip(updatedData, dest, now);
+  };
+
+  const finalizeStartTrip = async (updatedData: TripDestination[], dest: TripDestination, now: Date) => {
+    updatedData[firstPendingIndex].status = 'Active';
+    updatedData[firstPendingIndex].actual_arrival_time = now.toISOString();
+    
+    setData(updatedData);
+    setIsUnsaved(true);
+    await saveAllTrips(updatedData as any);
+    
+    openNavigation(dest);
+  };
+
+  const handleContinueTrip = async () => {
+    if (activeStopIndex === -1) return;
+    
+    const currentStop = data[activeStopIndex];
+    let updatedData = [...data];
+    
+    updatedData[activeStopIndex] = { ...currentStop, status: 'Completed' };
+    
+    const nextPendingIndex = updatedData.findIndex(d => d.status === 'Pending' || !d.status);
+    
+    if (nextPendingIndex !== -1) {
+      const nextDest = updatedData[nextPendingIndex];
+      const now = new Date();
+      
+      let currentLocation;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({});
+          currentLocation = { latitude: location.coords.latitude, longitude: location.coords.longitude };
+        }
+      } catch (e) {}
+
+      let updatedDataRecalc = await recalculateSchedule(updatedData, nextPendingIndex, now, currentLocation);
+      
+      const closedCount = checkClosedWarnings(updatedDataRecalc);
+      if (closedCount > 0) {
+        const msg = `Continuing now will result in ${closedCount} destination(s) being closed when you arrive. Do you still want to continue?`;
+        if (Platform.OS === 'web') {
+          if (!window.confirm(msg)) return;
+        } else {
+          Alert.alert(
+            "Destinations Closed",
+            msg,
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Continue Anyway", onPress: () => finalizeContinueTrip(updatedDataRecalc, nextPendingIndex, nextDest, now) }
+            ]
+          );
+          return;
+        }
+      }
+
+      await finalizeContinueTrip(updatedDataRecalc, nextPendingIndex, nextDest, now);
+    } else {
+      alert("Trip Completed! 🎉");
+      setData(updatedData);
+      setIsUnsaved(true);
+      await saveAllTrips(updatedData as any);
+    }
+  };
+
+  const finalizeContinueTrip = async (updatedData: TripDestination[], nextPendingIndex: number, nextDest: TripDestination, now: Date) => {
+    updatedData[nextPendingIndex].status = 'Active';
+    updatedData[nextPendingIndex].actual_arrival_time = now.toISOString();
+
+    setData(updatedData);
+    setIsUnsaved(true);
+    await saveAllTrips(updatedData as any);
+    
+    openNavigation(nextDest);
+  };
+
+  const handleCancelTrip = async () => {
+    const updatedData = data.map(dest => ({
+      ...dest,
+      status: 'Pending' as const,
+      actual_arrival_time: null,
+      planned_time: dest.original_planned_time || dest.planned_time,
+      planned_date: dest.original_planned_date || dest.planned_date,
+      original_planned_time: null,
+      original_planned_date: null
+    }));
+    
+    setData(updatedData);
+    setIsUnsaved(true);
+    await saveAllTrips(updatedData as any);
+  };
 
   useEffect(() => {
     const setup = async () => {
@@ -262,6 +558,7 @@ export default function Trips() {
         for (let i = 0; i < data.length - 1; i++) {
           const current = data[i] as any;
           const next = data[i + 1] as any;
+          if (current.status === 'Completed') continue;
           if (!current.planned_time || !next.planned_time || current.duration_hours == null) continue;
           
           const cacheKey = `${current.location_place_id}-${next.location_place_id}`;
@@ -291,6 +588,52 @@ export default function Trips() {
             warnings[next.id] = `Based on travel time, the earliest you can arrive is ${displayHours}:${arrivalMins.toString().padStart(2, '0')} ${ampm}.`;
           }
         }
+
+        // Check opening hours for all pending/active stops
+        for (let i = 0; i < data.length; i++) {
+          const stop = data[i] as any;
+          if (stop.status === 'Completed') continue;
+          
+          let arrivalMins = timeToMinutes(stop.planned_time);
+
+          if (stop.opening_hours && stop.planned_date && stop.planned_time) {
+            try {
+              const periods = JSON.parse(stop.opening_hours);
+              const [y, m, d] = stop.planned_date.split('-');
+              const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+              const dayOfWeek = dateObj.getDay();
+              
+              const arrivalTimeStr = `${Math.floor(arrivalMins / 60).toString().padStart(2, '0')}${(arrivalMins % 60).toString().padStart(2, '0')}`;
+              const arrivalTimeNum = parseInt(arrivalTimeStr, 10);
+
+              const dayPeriods = periods.filter((p: any) => p.open.day === dayOfWeek);
+              if (dayPeriods.length > 0) {
+                let isOpen = false;
+                let closeTimeStr = "";
+                for (const p of dayPeriods) {
+                  const openTime = parseInt(p.open.time, 10);
+                  const closeTime = p.close ? parseInt(p.close.time, 10) : 2359;
+                  
+                  if (arrivalTimeNum >= openTime && arrivalTimeNum < closeTime) {
+                    isOpen = true;
+                    break;
+                  }
+                  if (arrivalTimeNum >= closeTime) {
+                    closeTimeStr = p.close.time;
+                  }
+                }
+                
+                if (!isOpen && closeTimeStr) {
+                  const ch = parseInt(closeTimeStr.substring(0,2));
+                  const cm = closeTimeStr.substring(2);
+                  const formattedClose = `${ch % 12 || 12}:${cm} ${ch >= 12 ? 'PM' : 'AM'}`;
+                  warnings[stop.id] = (warnings[stop.id] ? warnings[stop.id] + "\n" : "") + `Destination might be closed. It closes at ${formattedClose}.`;
+                }
+              }
+            } catch (e) {}
+          }
+        }
+
         if (isActive) {
           setLogisticsWarnings(prev => JSON.stringify(prev) !== JSON.stringify(warnings) ? warnings : prev);
         }
@@ -476,9 +819,10 @@ export default function Trips() {
 
   const performLoad = async (id: string) => {
     const loadedDestinations = await getSavedDestinations(id);
+    const resetDestinations = loadedDestinations.map(d => ({ ...d, status: 'Pending', actual_arrival_time: null }));
     await clearActiveTrips(); 
-    await saveAllTrips(loadedDestinations as any);
-    setData(loadedDestinations as any); 
+    await saveAllTrips(resetDestinations as any);
+    setData(resetDestinations as any); 
     setIsUnsaved(false); 
     setLoadModalVisible(false);
   };
@@ -541,6 +885,43 @@ export default function Trips() {
           <Text style={styles.title}>My Trips</Text>
           <Text style={styles.sub}>Hold and drag to reorder. Tap to edit, Swipe to delete.</Text>
           
+          {data.length > 0 && (
+            <View style={styles.executionBanner}>
+              {activeStopIndex !== -1 ? (
+                <View>
+                  <View style={styles.executionRow}>
+                    <View style={{flex: 1}}>
+                      <Text style={styles.executionTitle}>Current Stop: {data[activeStopIndex].location_name}</Text>
+                      <Text style={styles.executionSub}>Tap continue when you're ready to leave.</Text>
+                    </View>
+                    <TouchableOpacity style={styles.executionBtn} onPress={handleContinueTrip}>
+                      <Text style={styles.executionBtnText}>Continue Trip</Text>
+                      <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelTrip}>
+                    <Text style={styles.cancelBtnText}>Cancel Trip</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : firstPendingIndex !== -1 ? (
+                <View style={styles.executionRow}>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.executionTitle}>Ready to explore?</Text>
+                    <Text style={styles.executionSub}>Next: {data[firstPendingIndex].location_name}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.executionBtn} onPress={handleStartTrip}>
+                    <Text style={styles.executionBtnText}>Start Trip</Text>
+                    <Ionicons name="navigate" size={16} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.executionRow}>
+                  <Text style={styles.executionTitle}>Trip Completed! 🎉</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <DraggableFlatList
             data={data}
             extraData={logisticsWarnings}
@@ -1205,5 +1586,58 @@ const styles = StyleSheet.create({
     width: 79, 
     borderRadius: theme.radius.md, 
     paddingRight: 25 
+  },
+  executionBanner: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.md,
+    padding: 15,
+    marginBottom: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  executionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  executionTitle: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  executionSub: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  executionBtn: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  executionBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  cancelBtn: {
+    marginTop: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+  },
+  cancelBtnText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '600',
+    fontSize: 14,
   }
 });

@@ -13,6 +13,8 @@ export type TripDestination = {
   status?: 'Pending' | 'Active' | 'Completed'; // Optional status to track trip progress
   actual_arrival_time?: string | null; // Incase of schedule shifting
   opening_hours?: string | null;
+  original_planned_time?: string | null; // Used to restore times after canceling a trip
+  original_planned_date?: string | null; // Used to restore dates after canceling a trip
 };
 
 export const MOCK_TRIP_DATA: TripDestination[] = [

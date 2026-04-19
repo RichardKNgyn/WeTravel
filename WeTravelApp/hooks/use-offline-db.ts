@@ -16,6 +16,8 @@ export type Trip = {
   status: string | null;
   actual_arrival_time: string | null;
   opening_hours: string | null;
+  original_planned_time?: string | null;
+  original_planned_date?: string | null;
 };
 
 export type CachedPost = {
@@ -48,75 +50,89 @@ if (Platform.OS !== 'web') {
   }
 }
 
-export async function initDB(): Promise<void> {
-  if (Platform.OS === 'web') return;
-  if (!db) return;
-  await db.execAsync('PRAGMA foreign_keys = ON;');
+let initPromise: Promise<void> | null = null;
 
-  await db.execAsync(`
-    CREATE TABLE IF NOT EXISTS trips (
-      id TEXT PRIMARY KEY NOT NULL,
-      location_name TEXT NOT NULL,
-      address TEXT NOT NULL,
-      planned_date TEXT,
-      planned_time TEXT,
-      duration_hours REAL,
-      note TEXT NOT NULL,
-      location_place_id TEXT NOT NULL,
-      order_index INTEGER NOT NULL,
-      latitude REAL,
-      longitude REAL,
-      status TEXT,
-      actual_arrival_time TEXT,
-      opening_hours TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS itineraries (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS saved_destinations (
-      id TEXT PRIMARY KEY NOT NULL,
-      itinerary_id TEXT NOT NULL,
-      location_name TEXT NOT NULL,
-      address TEXT NOT NULL,
-      planned_date TEXT,
-      planned_time TEXT,
-      duration_hours REAL,
-      note TEXT NOT NULL,
-      location_place_id TEXT NOT NULL,
-      order_index INTEGER NOT NULL,
-      latitude REAL,
-      longitude REAL,
-      opening_hours TEXT,
-      FOREIGN KEY (itinerary_id) REFERENCES itineraries(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS cached_posts (
-      id TEXT PRIMARY KEY NOT NULL,
-      author TEXT NOT NULL,
-      location TEXT,
-      images TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL,
-      likes INTEGER NOT NULL,
-      comments TEXT NOT NULL,
-      createdAt TEXT NOT NULL
-    );
-  `);
-
-  try { await db.execAsync('ALTER TABLE trips ADD COLUMN planned_date TEXT;'); } catch (e) {}
-  try { await db.execAsync('ALTER TABLE trips ADD COLUMN opening_hours TEXT;'); } catch (e) {}
+export function initDB(): Promise<void> {
+  if (Platform.OS === 'web') return Promise.resolve();
+  if (!db) return Promise.resolve();
   
-  try { await db.execAsync('ALTER TABLE saved_destinations ADD COLUMN planned_date TEXT;'); } catch (e) {}
-  try { await db.execAsync('ALTER TABLE saved_destinations ADD COLUMN opening_hours TEXT;'); } catch (e) {}
+  if (!initPromise) {
+    initPromise = (async () => {
+      await db.execAsync('PRAGMA foreign_keys = ON;');
+
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS trips (
+          id TEXT PRIMARY KEY NOT NULL,
+          location_name TEXT NOT NULL,
+          address TEXT NOT NULL,
+          planned_date TEXT,
+          planned_time TEXT,
+          duration_hours REAL,
+          note TEXT NOT NULL,
+          location_place_id TEXT NOT NULL,
+          order_index INTEGER NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          status TEXT,
+          actual_arrival_time TEXT,
+          opening_hours TEXT,
+          original_planned_time TEXT,
+          original_planned_date TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS itineraries (
+          id TEXT PRIMARY KEY NOT NULL,
+          name TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS saved_destinations (
+          id TEXT PRIMARY KEY NOT NULL,
+          itinerary_id TEXT NOT NULL,
+          location_name TEXT NOT NULL,
+          address TEXT NOT NULL,
+          planned_date TEXT,
+          planned_time TEXT,
+          duration_hours REAL,
+          note TEXT NOT NULL,
+          location_place_id TEXT NOT NULL,
+          order_index INTEGER NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          opening_hours TEXT,
+          FOREIGN KEY (itinerary_id) REFERENCES itineraries(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS cached_posts (
+          id TEXT PRIMARY KEY NOT NULL,
+          author TEXT NOT NULL,
+          location TEXT,
+          images TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          likes INTEGER NOT NULL,
+          comments TEXT NOT NULL,
+          createdAt TEXT NOT NULL
+        );
+      `);
+
+      try { await db.execAsync('ALTER TABLE trips ADD COLUMN planned_date TEXT;'); } catch (e) {}
+      try { await db.execAsync('ALTER TABLE trips ADD COLUMN opening_hours TEXT;'); } catch (e) {}
+      try { await db.execAsync('ALTER TABLE trips ADD COLUMN original_planned_time TEXT;'); } catch (e) {}
+      try { await db.execAsync('ALTER TABLE trips ADD COLUMN original_planned_date TEXT;'); } catch (e) {}
+      
+      try { await db.execAsync('ALTER TABLE saved_destinations ADD COLUMN planned_date TEXT;'); } catch (e) {}
+      try { await db.execAsync('ALTER TABLE saved_destinations ADD COLUMN opening_hours TEXT;'); } catch (e) {}
+    })();
+  }
+  
+  return initPromise;
 }
 
 export async function getTrips(): Promise<Trip[]> {
   if (Platform.OS === 'web') return JSON.parse(localStorage.getItem('active_trips') || '[]');
   if (!db) return [];
+  await initDB();
   return db.getAllAsync<Trip>(
     'SELECT * FROM trips ORDER BY order_index ASC;'
   );
@@ -136,8 +152,8 @@ export async function saveTrip(trip: Trip): Promise<void> {
     `INSERT OR REPLACE INTO trips (
       id, location_name, address, planned_date, planned_time, duration_hours,
       note, location_place_id, order_index, latitude, longitude,
-      status, actual_arrival_time, opening_hours
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      status, actual_arrival_time, opening_hours, original_planned_time, original_planned_date
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       trip.id,
       trip.location_name || "",
@@ -153,6 +169,8 @@ export async function saveTrip(trip: Trip): Promise<void> {
       trip.status ?? null,
       trip.actual_arrival_time ?? null,
       trip.opening_hours ?? null,
+      trip.original_planned_time ?? null,
+      trip.original_planned_date ?? null,
     ]
   );
 }
@@ -173,11 +191,22 @@ export async function clearActiveTrips(): Promise<void> {
   await db.runAsync('DELETE FROM trips;');
 }
 
+let isSaving = false;
+
 export async function saveAllTrips(trips: Trip[]): Promise<void> {
   if (Platform.OS === 'web') return localStorage.setItem('active_trips', JSON.stringify(trips));
   if (!db) return;
-  await db.runAsync('DELETE FROM trips;');
-  for (const trip of trips) await saveTrip(trip);
+  
+  while (isSaving) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  isSaving = true;
+  try {
+    await db.runAsync('DELETE FROM trips;');
+    for (const trip of trips) await saveTrip(trip);
+  } finally {
+    isSaving = false;
+  }
 }
 
 export async function saveFullItinerary(name: string, destinations: Trip[]): Promise<void> {
@@ -255,6 +284,7 @@ export async function deleteFullItinerary(id: string): Promise<void> {
 export async function getCachedPosts(): Promise<CachedPost[]> {
   if (Platform.OS === 'web') return JSON.parse(localStorage.getItem('cached_posts') || '[]');
   if (!db) return [];
+  await initDB();
   return db.getAllAsync<CachedPost>(
     'SELECT * FROM cached_posts ORDER BY createdAt DESC;'
   );
@@ -270,6 +300,7 @@ export async function saveCachedPost(post: CachedPost): Promise<void> {
     return;
   }
   if (!db) return;
+  await initDB();
   await db.runAsync(
     `INSERT OR REPLACE INTO cached_posts (
       id, author, location, images, title, description, likes, comments, createdAt
@@ -291,6 +322,7 @@ export async function saveCachedPost(post: CachedPost): Promise<void> {
 export async function saveAllCachedPosts(posts: CachedPost[]): Promise<void> {
   if (Platform.OS === 'web') return localStorage.setItem('cached_posts', JSON.stringify(posts));
   if (!db) return;
+  await initDB();
   await db.runAsync('DELETE FROM cached_posts;');
   for (const post of posts) await saveCachedPost(post);
 }
