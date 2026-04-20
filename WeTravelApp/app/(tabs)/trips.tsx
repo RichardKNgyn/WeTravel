@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform, Linking, Alert } from "react-native";
+import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -10,9 +11,9 @@ import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplet
 import { SafeAreaView } from "react-native-safe-area-context";
 import PrimaryButton from "../../components/PrimaryButton";
 import { theme } from "../../constants/theme";
-import { MOCK_TRIP_DATA, TripDestination } from "../../data/mock-trips";
+import { TripDestination } from "../../data/mock-trips";
 import { useNetwork } from '../../hooks/use-network';
-import { initDB, getTrips, saveTrip, deleteTrip, saveAllTrips, saveFullItinerary, getItineraries, getSavedDestinations, deleteFullItinerary,Itinerary, clearActiveTrips } from '../../hooks/use-offline-db';
+import { clearActiveTrips, deleteFullItinerary, deleteTrip, getItineraries, getSavedDestinations, getTrips, initDB, Itinerary, saveAllTrips, saveFullItinerary, saveTrip } from '../../hooks/use-offline-db';
 
 export const NATIVE_MAPS_KEY = Platform.select({
   // Application Restricted keys for use in map tab (include only Maps SDK for iOS/Android/Web)
@@ -476,21 +477,26 @@ export default function Trips() {
     await saveAllTrips(updatedData as any);
   };
 
+  // Load trips from local DB on mount
   useEffect(() => {
     const setup = async () => {
       await initDB();
       const savedTrips = await getTrips();
-      
-      // If DB is empty, load mock data for the first time
-      if (savedTrips.length === 0 && MOCK_TRIP_DATA.length > 0) {
-        setData(MOCK_TRIP_DATA as any);
-        await saveAllTrips(MOCK_TRIP_DATA as any);
-      } else {
-        setData(savedTrips as any);
-      }
+      setData(savedTrips as any);
     };
     setup();
   }, []);
+
+  // Reload trips when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const reload = async () => {
+        const savedTrips = await getTrips();
+        setData(savedTrips as any);
+      };
+      reload();
+    }, [])
+  );
 
   useEffect(() => {
     if (editingItem) {
