@@ -1,28 +1,31 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  Pressable,
-  KeyboardAvoidingView,
-  Platform,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { usePosts, type Comment } from "../../hooks/use-posts";
 import { theme } from "../../constants/theme";
+import { usePosts } from "../../hooks/use-posts";
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { posts, addComment } = usePosts();
+  const { posts, addComment, addReply, likedPosts, savedPosts, toggleLike, toggleSave } = usePosts();
   const post = posts.find((p) => p.id === id);
 
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(likedPosts.has(id || ''));
+  const [saved, setSaved] = useState(savedPosts.has(id || ''));
   const [input, setInput] = useState("");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyInput, setReplyInput] = useState("");
 
   if (!post) {
     return (
@@ -34,11 +37,41 @@ export default function PostDetail() {
 
   const likes = post.likes + (liked ? 1 : 0);
 
+  function handleToggleLike() {
+    const newLiked = !liked;
+    setLiked(newLiked);
+    toggleLike(post!.id);
+  }
+
+  function handleToggleSave() {
+    const newSaved = !saved;
+    setSaved(newSaved);
+    toggleSave(post!.id);
+  }
+
   function handleAddComment() {
     const trimmed = input.trim();
     if (!trimmed) return;
-    addComment(post!.id, { id: String(Date.now()), user: "You", text: trimmed });
+    addComment(post!.id, { 
+      id: String(Date.now()), 
+      user: "You", 
+      text: trimmed,
+      createdAt: new Date().toISOString()
+    });
     setInput("");
+  }
+
+  function handleAddReply(commentId: string) {
+    const trimmed = replyInput.trim();
+    if (!trimmed) return;
+    addReply(post!.id, commentId, { 
+      id: String(Date.now()), 
+      user: "You", 
+      text: trimmed,
+      createdAt: new Date().toISOString()
+    });
+    setReplyInput("");
+    setReplyingTo(null);
   }
 
   return (
@@ -80,7 +113,7 @@ export default function PostDetail() {
 
           <View style={styles.actionsRow}>
             <Pressable
-              onPress={() => setLiked((v) => !v)}
+              onPress={handleToggleLike}
               style={styles.actionBtn}
               hitSlop={10}
             >
@@ -96,6 +129,18 @@ export default function PostDetail() {
               <Ionicons name="chatbubble-outline" size={22} color={theme.colors.text} />
               <Text style={styles.actionText}>{post.comments.length}</Text>
             </View>
+
+            <Pressable
+              onPress={handleToggleSave}
+              style={styles.actionBtn}
+              hitSlop={10}
+            >
+              <Ionicons
+                name={saved ? "bookmark" : "bookmark-outline"}
+                size={22}
+                color={saved ? theme.colors.primary : theme.colors.text}
+              />
+            </Pressable>
           </View>
 
           <View style={styles.divider} />
@@ -106,16 +151,64 @@ export default function PostDetail() {
             <Text style={styles.noComments}>No comments yet. Be the first!</Text>
           ) : (
             post.comments.map((c) => (
-              <View key={c.id} style={styles.commentRow}>
-                <View style={styles.commentAvatar}>
-                  <Text style={styles.commentAvatarText}>
-                    {c.user?.[0]?.toUpperCase() ?? "U"}
-                  </Text>
+              <View key={c.id}>
+                <View style={styles.commentRow}>
+                  <View style={styles.commentAvatar}>
+                    <Text style={styles.commentAvatarText}>
+                      {c.user?.[0]?.toUpperCase() ?? "U"}
+                    </Text>
+                  </View>
+                  <View style={styles.commentContent}>
+                    <View style={styles.commentBubble}>
+                      <Text style={styles.commentUser}>{c.user}</Text>
+                      <Text style={styles.commentText}>{c.text}</Text>
+                    </View>
+                    <Pressable 
+                      onPress={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
+                      style={styles.replyBtn}
+                      hitSlop={5}
+                    >
+                      <Text style={styles.replyText}>Reply</Text>
+                    </Pressable>
+                  </View>
                 </View>
-                <View style={styles.commentBubble}>
-                  <Text style={styles.commentUser}>{c.user}</Text>
-                  <Text style={styles.commentText}>{c.text}</Text>
-                </View>
+
+                {/* Reply input */}
+                {replyingTo === c.id && (
+                  <View style={styles.replyInputContainer}>
+                    <TextInput
+                      style={styles.replyInput}
+                      placeholder={`Reply to ${c.user}...`}
+                      placeholderTextColor={theme.colors.subtext}
+                      value={replyInput}
+                      onChangeText={setReplyInput}
+                      returnKeyType="send"
+                      onSubmitEditing={() => handleAddReply(c.id)}
+                    />
+                    <Pressable onPress={() => handleAddReply(c.id)} hitSlop={10}>
+                      <Ionicons name="send" size={16} color={theme.colors.primary} />
+                    </Pressable>
+                  </View>
+                )}
+
+                {/* Replies */}
+                {c.replies && c.replies.length > 0 && (
+                  <View style={styles.repliesContainer}>
+                    {c.replies.map((reply) => (
+                      <View key={reply.id} style={styles.replyRow}>
+                        <View style={styles.replyAvatar}>
+                          <Text style={styles.replyAvatarText}>
+                            {reply.user?.[0]?.toUpperCase() ?? "U"}
+                          </Text>
+                        </View>
+                        <View style={styles.replyBubble}>
+                          <Text style={styles.replyUser}>{reply.user}</Text>
+                          <Text style={styles.replyText}>{reply.text}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             ))
           )}
@@ -261,10 +354,13 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: theme.spacing.sm,
   },
+  commentContent: {
+    flex: 1,
+  },
   commentAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: theme.colors.muted,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -277,10 +373,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   commentBubble: {
-    flex: 1,
     backgroundColor: theme.colors.muted,
     borderRadius: theme.radius.sm,
     padding: theme.spacing.xs,
+    marginBottom: 4,
   },
   commentUser: {
     fontSize: 12,
@@ -292,6 +388,75 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.text,
     lineHeight: 18,
+  },
+  replyBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  replyText: {
+    fontSize: 12,
+    color: theme.colors.subtext,
+    fontWeight: "600",
+  },
+  replyInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 42,
+    marginBottom: theme.spacing.sm,
+    gap: 8,
+  },
+  replyInput: {
+    flex: 1,
+    backgroundColor: theme.colors.muted,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+    fontSize: 13,
+    color: theme.colors.text,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  repliesContainer: {
+    marginLeft: 42,
+    marginBottom: theme.spacing.sm,
+  },
+  replyRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 6,
+  },
+  replyAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.muted,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replyAvatarText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: theme.colors.text,
+  },
+  replyBubble: {
+    flex: 1,
+    backgroundColor: theme.colors.muted,
+    borderRadius: theme.radius.sm,
+    padding: 6,
+  },
+  replyUser: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: theme.colors.text,
+    marginBottom: 1,
+  },
+  replyText: {
+    fontSize: 12,
+    color: theme.colors.text,
+    lineHeight: 16,
   },
   inputBar: {
     flexDirection: "row",

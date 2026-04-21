@@ -28,6 +28,7 @@ export type CachedPost = {
   title: string;
   description: string;
   likes: number;
+  isLiked: boolean;
   comments: string;
   createdAt: string;
 };
@@ -113,6 +114,14 @@ export function initDB(): Promise<void> {
           likes INTEGER NOT NULL,
           comments TEXT NOT NULL,
           createdAt TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS liked_posts (
+          post_id TEXT PRIMARY KEY NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS saved_posts (
+          post_id TEXT PRIMARY KEY NOT NULL
         );
       `);
 
@@ -325,4 +334,52 @@ export async function saveAllCachedPosts(posts: CachedPost[]): Promise<void> {
   await initDB();
   await db.runAsync('DELETE FROM cached_posts;');
   for (const post of posts) await saveCachedPost(post);
+}
+
+export async function getLikedPosts(): Promise<Set<string>> {
+  if (Platform.OS === 'web') {
+    const liked = JSON.parse(localStorage.getItem('liked_posts') || '[]');
+    return new Set(liked);
+  }
+  if (!db) return new Set();
+  await initDB();
+  const rows = await db.getAllAsync<{ post_id: string }>('SELECT post_id FROM liked_posts;');
+  return new Set(rows.map(r => r.post_id));
+}
+
+export async function saveLikedPosts(likedPosts: Set<string>): Promise<void> {
+  if (Platform.OS === 'web') {
+    localStorage.setItem('liked_posts', JSON.stringify(Array.from(likedPosts)));
+    return;
+  }
+  if (!db) return;
+  await initDB();
+  await db.runAsync('DELETE FROM liked_posts;');
+  for (const postId of likedPosts) {
+    await db.runAsync('INSERT INTO liked_posts (post_id) VALUES (?);', [postId]);
+  }
+}
+
+export async function getSavedPosts(): Promise<Set<string>> {
+  if (Platform.OS === 'web') {
+    const saved = JSON.parse(localStorage.getItem('saved_posts') || '[]');
+    return new Set(saved);
+  }
+  if (!db) return new Set();
+  await initDB();
+  const rows = await db.getAllAsync<{ post_id: string }>('SELECT post_id FROM saved_posts;');
+  return new Set(rows.map(r => r.post_id));
+}
+
+export async function saveSavedPosts(savedPosts: Set<string>): Promise<void> {
+  if (Platform.OS === 'web') {
+    localStorage.setItem('saved_posts', JSON.stringify(Array.from(savedPosts)));
+    return;
+  }
+  if (!db) return;
+  await initDB();
+  await db.runAsync('DELETE FROM saved_posts;');
+  for (const postId of savedPosts) {
+    await db.runAsync('INSERT INTO saved_posts (post_id) VALUES (?);', [postId]);
+  }
 }

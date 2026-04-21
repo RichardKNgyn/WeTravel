@@ -1,10 +1,6 @@
-import { useEffect } from 'react';
-import { router } from 'expo-router';
+import { View } from 'react-native';
 
 export default function Create() {
-  useEffect(() => {
-    router.replace('/create-post');
-  }, []);
-
-  return null;
+  // This screen is never shown - navigation happens via tabPress listener in _layout.tsx
+  return <View />;
 }

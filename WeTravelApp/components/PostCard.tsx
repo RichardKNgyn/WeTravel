@@ -1,13 +1,15 @@
 import type { Post } from "@/hooks/use-posts";
+import { usePosts } from "@/hooks/use-posts";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef } from "react";
 import { Image, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { theme } from "../constants/theme";
 
 export default function PostCard({ post }: { post: Post }) {
-  const [liked, setLiked] = useState(false);
-  const likes = useMemo(() => post.likes + (liked ? 1 : 0), [post.likes, liked]);
+  const { savedPosts, toggleLike, toggleSave } = usePosts();
+  const saved = savedPosts.has(post.id);
+  const likes = useMemo(() => post.likes, [post.likes]);
 
   const sharingRef = useRef(false);
   const handleShare = async () => {
@@ -75,14 +77,14 @@ export default function PostCard({ post }: { post: Post }) {
         <View style={[styles.row, { marginTop: 10 }]}>
           <View style={styles.actions}>
             <Pressable
-              onPress={() => setLiked((v) => !v)}
+              onPress={() => toggleLike(post.id)}
               style={styles.actionBtn}
               hitSlop={10}
             >
               <Ionicons
-                name={liked ? "heart" : "heart-outline"}
+                name={post.isLiked ? "heart" : "heart-outline"}
                 size={20}
-                color={liked ? theme.colors.error : theme.colors.text}
+                color={post.isLiked ? theme.colors.error : theme.colors.text}
               />
               <Text style={styles.actionText}>{likes}</Text>
             </Pressable>
@@ -112,11 +114,11 @@ export default function PostCard({ post }: { post: Post }) {
             </Pressable>
           </View>
 
-          <Pressable hitSlop={10}>
+          <Pressable hitSlop={10} onPress={() => toggleSave(post.id)}>
             <Ionicons
-              name="bookmark-outline"
+              name={saved ? "bookmark" : "bookmark-outline"}
               size={20}
-              color={theme.colors.text}
+              color={saved ? theme.colors.primary : theme.colors.text}
             />
           </Pressable>
         </View>
