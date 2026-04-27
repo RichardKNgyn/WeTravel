@@ -1,6 +1,21 @@
-﻿import { initDB, saveAllCachedPosts, saveAllTrips } from './use-offline-db';
+﻿import { Platform } from 'react-native';
+import { initDB, saveAllCachedPosts, saveAllTrips } from './use-offline-db';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
+// For Android emulator, localhost is 10.0.2.2. For iOS simulator, it's localhost.
+// For physical devices, needs local IP address.
+const getBaseUrl = () => {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:5000/api';
+  }
+  
+  return 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = getBaseUrl();
 
 /**
  * Simple one-time sync: fetch bootstrap and save to local DB

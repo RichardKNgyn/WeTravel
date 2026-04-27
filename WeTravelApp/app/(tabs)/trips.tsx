@@ -25,12 +25,175 @@ export const NATIVE_MAPS_KEY = Platform.select({
 // API Restricted key for use in GooglePlacesAutocomplete (include Places API, Geocoding API, and Distance Matrix API)
 export const TRIPS_KEY = process.env.EXPO_PUBLIC_TRIPS_KEY;
 
+const MINUTES_PER_DAY = 24 * 60;
+const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
+
+const parseGoogleTime = (time?: string) => {
+  if (!time || time.length < 4) return 0;
+  const hours = parseInt(time.substring(0, 2), 10);
+  const minutes = parseInt(time.substring(2, 4), 10);
+  return (isNaN(hours) ? 0 : hours) * 60 + (isNaN(minutes) ? 0 : minutes);
+};
+
+const formatMinutesOfDay = (minutesOfDay: number) => {
+  const normalizedMinutes = ((minutesOfDay % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  const hours = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+  return `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+};
+
+const formatWeekday = (day: number) => {
+  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][day] || "this day";
+};
+
+const parseOpeningPeriods = (openingHours: any) => {
+  if (!openingHours) return null;
+  if (Array.isArray(openingHours)) return openingHours;
+  try {
+    const parsed = JSON.parse(openingHours);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const timeStringToMinutes = (timeStr: string) => {
+  if (!timeStr) return 0;
+  const [time, period] = timeStr.split(' ');
+  if (!time) return 0;
+  let [hours, minutes] = time.split(':').map(Number);
+  if (isNaN(hours)) hours = 12;
+  if (isNaN(minutes)) minutes = 0;
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
+const getOpeningHoursStatus = (openingHours: any, plannedDate?: string | null, plannedTime?: string | null) => {
+  const periods = parseOpeningPeriods(openingHours);
+  if (!periods || !plannedDate || !plannedTime) {
+    return { hasHours: false, isOpen: true, message: "" };
+  }
+
+  const [year, month, day] = plannedDate.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day);
+  const arrivalDay = dateObj.getDay();
+  const arrivalDayStart = arrivalDay * MINUTES_PER_DAY;
+  const arrivalDayEnd = arrivalDayStart + MINUTES_PER_DAY;
+  const arrivalWeekMinute = arrivalDayStart + timeStringToMinutes(plannedTime);
+
+  if (periods.length === 0) {
+    return { hasHours: true, isOpen: false, message: `The location is not open on ${formatWeekday(arrivalDay)}.` };
+  }
+
+  const windowsForArrivalDay: Array<{ open: number; close: number }> = [];
+
+  for (const period of periods) {
+    if (!period?.open) continue;
+
+    const openMinute = (period.open.day ?? 0) * MINUTES_PER_DAY + parseGoogleTime(period.open.time);
+
+    if (!period.close) {
+      if (period.open.time === "0000") {
+        return { hasHours: true, isOpen: true, message: "" };
+      }
+    }
+
+    const rawCloseMinute = period.close
+      ? (period.close.day ?? period.open.day ?? 0) * MINUTES_PER_DAY + parseGoogleTime(period.close.time)
+      : openMinute + MINUTES_PER_DAY;
+    const closeMinute = rawCloseMinute <= openMinute ? rawCloseMinute + MINUTES_PER_WEEK : rawCloseMinute;
+
+    for (const weekOffset of [-MINUTES_PER_WEEK, 0, MINUTES_PER_WEEK]) {
+      const shiftedOpen = openMinute + weekOffset;
+      const shiftedClose = closeMinute + weekOffset;
+
+      if (shiftedOpen < arrivalDayEnd && shiftedClose > arrivalDayStart) {
+        windowsForArrivalDay.push({ open: shiftedOpen, close: shiftedClose });
+      }
+
+      if (arrivalWeekMinute >= shiftedOpen && arrivalWeekMinute < shiftedClose) {
+        return { hasHours: true, isOpen: true, message: "" };
+      }
+    }
+  }
+
+  if (windowsForArrivalDay.length === 0) {
+    return { hasHours: true, isOpen: false, message: `The location is not open on ${formatWeekday(arrivalDay)}.` };
+  }
+
+  let previousClose: number | null = null;
+  let nextOpen: number | null = null;
+  for (const window of windowsForArrivalDay) {
+    if (window.close <= arrivalWeekMinute && (previousClose === null || window.close > previousClose)) {
+      previousClose = window.close;
+    }
+
+    if (window.open > arrivalWeekMinute && (nextOpen === null || window.open < nextOpen)) {
+      nextOpen = window.open;
+    }
+  }
+
+  if (previousClose !== null) {
+    return { hasHours: true, isOpen: false, message: `The location closed at ${formatMinutesOfDay(previousClose)}.` };
+  }
+
+  if (nextOpen !== null) {
+    return { hasHours: true, isOpen: false, message: `The location opens at ${formatMinutesOfDay(nextOpen)}.` };
+  }
+
+  return { hasHours: true, isOpen: false, message: "The location is not open at this time." };
+};
+
+const fetchPlaceHoursById = async (placeId: string, signal?: AbortSignal) => {
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=opening_hours,business_status&key=${TRIPS_KEY}`;
+  const res = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(url)}` : url, { signal });
+  const json = await res.json();
+
+  if (json.result?.business_status === "CLOSED_PERMANENTLY" || json.result?.business_status === "CLOSED_TEMPORARILY") {
+    return JSON.stringify([]);
+  }
+
+  const periods = json.result?.opening_hours?.periods;
+  return Array.isArray(periods) ? JSON.stringify(periods) : null;
+};
+
+const fetchOpeningHoursForPlace = async (
+  placeId?: string | null,
+  locationName?: string | null,
+  address?: string | null,
+  signal?: AbortSignal
+) => {
+  if (!TRIPS_KEY) return null;
+
+  if (placeId) {
+    const hoursFromPlaceId = await fetchPlaceHoursById(placeId, signal);
+    if (hoursFromPlaceId) return hoursFromPlaceId;
+  }
+
+  const searchText = [locationName, address].filter(Boolean).join(" ");
+  if (!searchText) return null;
+
+  const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchText)}&key=${TRIPS_KEY}`;
+  const searchRes = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(searchUrl)}` : searchUrl, { signal });
+  const searchJson = await searchRes.json();
+  const candidates = searchJson.results?.slice(0, 3) || [];
+
+  for (const candidate of candidates) {
+    if (!candidate.place_id || candidate.place_id === placeId) continue;
+    const hoursFromCandidate = await fetchPlaceHoursById(candidate.place_id, signal);
+    if (hoursFromCandidate) return hoursFromCandidate;
+  }
+
+  return null;
+};
+
 const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit, onDelete, onSwipeOpen, onShowWarning }: any) => {
   const swipeRef = useRef<any>(null);
 
   const handleWarningPress = () => {
     if (isWeb) {
-      window.alert("Schedule Conflict\n\n" + warning);
+      window.alert("Schedule Warning\n\n" + warning);
     } else {
       onShowWarning(warning);
     }
@@ -53,10 +216,10 @@ const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit,
             backgroundColor: isActive ? theme.colors.muted : theme.colors.white,
             transform: [{ scale: isActive ? 0.98 : 1 }],
             elevation: isActive ? 8 : 4,
-            borderColor: isActiveStop ? theme.colors.primary : warning ? theme.colors.error : 'transparent', 
+            borderColor: warning ? theme.colors.error : isActiveStop ? theme.colors.primary : 'transparent', 
             borderWidth: isActiveStop ? 2 : 1.5, 
             borderLeftWidth: 5, 
-            borderLeftColor: isCompleted ? theme.colors.subtext : isActiveStop ? theme.colors.primary : warning ? theme.colors.error : theme.colors.primary,
+            borderLeftColor: isCompleted ? theme.colors.subtext : warning ? theme.colors.error : isActiveStop ? theme.colors.primary : theme.colors.primary,
             opacity: isCompleted ? 0.6 : 1
           },
           isWeb ? ({ cursor: isActive ? 'grabbing' : 'grab' } as any) : null
@@ -83,7 +246,7 @@ const TripItemCard = React.memo(({ item, drag, isActive, isWeb, warning, onEdit,
           </View>
         )}
 
-        {warning && !isCompleted && !isActiveStop && (
+        {warning && !isCompleted && (
           <TouchableOpacity 
             style={{ paddingHorizontal: 10, justifyContent: 'center' }} 
             onPress={handleWarningPress}
@@ -186,6 +349,7 @@ export default function Trips() {
 
   const [logisticsWarnings, setLogisticsWarnings] = useState<Record<string, string>>({});
   const travelCache = useRef<Record<string, number>>({});
+  const openingHoursCache = useRef<Record<string, string | null>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [showWarningBanner, setShowWarningBanner] = useState(false);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -300,41 +464,10 @@ export default function Trips() {
     for (let i = 0; i < projectedData.length; i++) {
       const stop = projectedData[i] as any;
       if (stop.status === 'Completed') continue;
-      
-      let arrivalMins = timeToMinutes(stop.planned_time);
 
-      if (stop.opening_hours && stop.planned_date && stop.planned_time) {
-        try {
-          const periods = JSON.parse(stop.opening_hours);
-          const [y, m, d] = stop.planned_date.split('-');
-          const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-          const dayOfWeek = dateObj.getDay();
-          
-          const arrivalTimeStr = `${Math.floor(arrivalMins / 60).toString().padStart(2, '0')}${(arrivalMins % 60).toString().padStart(2, '0')}`;
-          const arrivalTimeNum = parseInt(arrivalTimeStr, 10);
-
-          const dayPeriods = periods.filter((p: any) => p.open.day === dayOfWeek);
-          if (dayPeriods.length > 0) {
-            let isOpen = false;
-            let closeTimeStr = "";
-            for (const p of dayPeriods) {
-              const openTime = parseInt(p.open.time, 10);
-              const closeTime = p.close ? parseInt(p.close.time, 10) : 2359;
-              
-              if (arrivalTimeNum >= openTime && arrivalTimeNum < closeTime) {
-                isOpen = true;
-                break;
-              }
-              if (arrivalTimeNum >= closeTime) {
-                closeTimeStr = p.close.time;
-              }
-            }
-            
-            if (!isOpen && closeTimeStr) {
-              closedCount++;
-            }
-          }
-        } catch (e) {}
+      const hoursStatus = getOpeningHoursStatus(stop.opening_hours, stop.planned_date, stop.planned_time);
+      if (hoursStatus.hasHours && !hoursStatus.isOpen) {
+        closedCount++;
       }
     }
     return closedCount;
@@ -540,20 +673,8 @@ export default function Trips() {
     }
   }, [editingItem]);
 
-  const timeToMinutes = useCallback((timeStr: string) => {
-    if (!timeStr) return 0;
-    const [time, period] = timeStr.split(' ');
-    if (!time) return 0;
-    let [hours, minutes] = time.split(':').map(Number);
-    if (isNaN(hours)) hours = 12;
-    if (isNaN(minutes)) minutes = 0;
-    if (period === 'PM' && hours !== 12) hours += 12;
-    if (period === 'AM' && hours === 12) hours = 0;
-    return hours * 60 + minutes;
-  }, []);
-
   useEffect(() => {
-    if (!isOnline || data.length < 2 || isDragging || !!editingItem) return;
+    if (!isOnline || data.length < 1 || isDragging || !!editingItem) return;
 
     const abortController = new AbortController();
     let isActive = true;
@@ -566,29 +687,48 @@ export default function Trips() {
           const next = data[i + 1] as any;
           if (current.status === 'Completed') continue;
           if (!current.planned_time || !next.planned_time || current.duration_hours == null) continue;
+          if (!current.planned_date || !next.planned_date) continue;
           
           const cacheKey = `${current.location_place_id}-${next.location_place_id}`;
           let travelSeconds = travelCache.current[cacheKey];
           
           if (travelSeconds === undefined) {
-            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=place_id:${current.location_place_id}&destinations=place_id:${next.location_place_id}&key=${TRIPS_KEY}`;
-            const res = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(url)}` : url, { signal: abortController.signal });
-            const json = await res.json();
-            travelSeconds = json.rows?.[0]?.elements?.[0]?.duration?.value || 0;
-            travelCache.current[cacheKey] = travelSeconds; 
+            try {
+              const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=place_id:${current.location_place_id}&destinations=place_id:${next.location_place_id}&key=${TRIPS_KEY}`;
+              const res = await fetch(Platform.OS === 'web' ? `https://corsproxy.io/?${encodeURIComponent(url)}` : url, { signal: abortController.signal });
+              const json = await res.json();
+              travelSeconds = json.rows?.[0]?.elements?.[0]?.duration?.value || 0;
+              travelCache.current[cacheKey] = travelSeconds;
+            } catch {
+              travelSeconds = 0;
+            }
           }
           
           if (!isActive) return;
           
-          const currentStartMins = timeToMinutes(current.planned_time);
-          const durationMins = current.duration_hours * 60;
-          const travelMins = Math.ceil(travelSeconds / 60);
-          const earliestArrivalMins = currentStartMins + durationMins + travelMins;
-          const nextPlannedStartMins = timeToMinutes(next.planned_time);
+          const parseDateTime = (dateStr: string, timeStr: string) => {
+            if (!dateStr || !timeStr) return 0;
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const [time, period] = timeStr.split(' ');
+            if (!time) return 0;
+            let [hours, minutes] = time.split(':').map(Number);
+            if (isNaN(hours)) hours = 12;
+            if (isNaN(minutes)) minutes = 0;
+            if (period === 'PM' && hours !== 12) hours += 12;
+            if (period === 'AM' && hours === 12) hours = 0;
+            return new Date(y, m - 1, d, hours, minutes).getTime();
+          };
+
+          const currentStartMs = parseDateTime(current.planned_date, current.planned_time);
+          const durationMs = (current.duration_hours || 0) * 3600 * 1000;
+          const travelMs = Math.ceil(travelSeconds / 60) * 60 * 1000;
+          const earliestArrivalMs = currentStartMs + durationMs + travelMs;
+          const nextPlannedStartMs = parseDateTime(next.planned_date, next.planned_time);
           
-          if (nextPlannedStartMins < earliestArrivalMins) {
-            const arrivalHours = Math.floor(earliestArrivalMins / 60);
-            const arrivalMins = earliestArrivalMins % 60;
+          if (currentStartMs > 0 && nextPlannedStartMs > 0 && nextPlannedStartMs < earliestArrivalMs) {
+            const arrDate = new Date(earliestArrivalMs);
+            const arrivalHours = arrDate.getHours();
+            const arrivalMins = arrDate.getMinutes();
             const displayHours = arrivalHours % 12 || 12;
             const ampm = arrivalHours >= 12 ? 'PM' : 'AM';
             warnings[next.id] = `Based on travel time, the earliest you can arrive is ${displayHours}:${arrivalMins.toString().padStart(2, '0')} ${ampm}.`;
@@ -596,54 +736,49 @@ export default function Trips() {
         }
 
         // Check opening hours for all pending/active stops
+        let hydratedData: TripDestination[] | null = null;
         for (let i = 0; i < data.length; i++) {
           const stop = data[i] as any;
           if (stop.status === 'Completed') continue;
-          
-          let arrivalMins = timeToMinutes(stop.planned_time);
 
-          if (stop.opening_hours && stop.planned_date && stop.planned_time) {
-            try {
-              const periods = JSON.parse(stop.opening_hours);
-              const [y, m, d] = stop.planned_date.split('-');
-              const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-              const dayOfWeek = dateObj.getDay();
-              
-              const arrivalTimeStr = `${Math.floor(arrivalMins / 60).toString().padStart(2, '0')}${(arrivalMins % 60).toString().padStart(2, '0')}`;
-              const arrivalTimeNum = parseInt(arrivalTimeStr, 10);
-
-              const dayPeriods = periods.filter((p: any) => p.open.day === dayOfWeek);
-              if (dayPeriods.length > 0) {
-                let isOpen = false;
-                let closeTimeStr = "";
-                for (const p of dayPeriods) {
-                  const openTime = parseInt(p.open.time, 10);
-                  const closeTime = p.close ? parseInt(p.close.time, 10) : 2359;
-                  
-                  if (arrivalTimeNum >= openTime && arrivalTimeNum < closeTime) {
-                    isOpen = true;
-                    break;
-                  }
-                  if (arrivalTimeNum >= closeTime) {
-                    closeTimeStr = p.close.time;
-                  }
-                }
-                
-                if (!isOpen && closeTimeStr) {
-                  const ch = parseInt(closeTimeStr.substring(0,2));
-                  const cm = closeTimeStr.substring(2);
-                  const formattedClose = `${ch % 12 || 12}:${cm} ${ch >= 12 ? 'PM' : 'AM'}`;
-                  warnings[stop.id] = (warnings[stop.id] ? warnings[stop.id] + "\n" : "") + `Destination might be closed. It closes at ${formattedClose}.`;
-                }
+          let openingHours = stop.opening_hours;
+          if (!parseOpeningPeriods(openingHours) && stop.location_place_id) {
+            const openingHoursCacheKey = `${stop.location_place_id}:${stop.location_name || ""}:${stop.address || ""}`;
+            if (!(openingHoursCacheKey in openingHoursCache.current)) {
+              try {
+                openingHoursCache.current[openingHoursCacheKey] = await fetchOpeningHoursForPlace(
+                  stop.location_place_id,
+                  stop.location_name,
+                  stop.address,
+                  abortController.signal
+                );
+              } catch {
+                openingHoursCache.current[openingHoursCacheKey] = null;
               }
-            } catch (e) {}
+            }
+
+            const cachedOpeningHours = openingHoursCache.current[openingHoursCacheKey];
+            if (cachedOpeningHours) {
+              openingHours = cachedOpeningHours;
+              hydratedData = hydratedData || [...data];
+              hydratedData[i] = { ...hydratedData[i], opening_hours: cachedOpeningHours } as any;
+            }
+          }
+
+          const hoursStatus = getOpeningHoursStatus(openingHours, stop.planned_date, stop.planned_time);
+          if (hoursStatus.hasHours && !hoursStatus.isOpen) {
+            warnings[stop.id] = (warnings[stop.id] ? warnings[stop.id] + "\n" : "") + hoursStatus.message;
           }
         }
 
         if (isActive) {
+          if (hydratedData) {
+            setData(hydratedData);
+            await saveAllTrips(hydratedData as any);
+          }
           setLogisticsWarnings(prev => JSON.stringify(prev) !== JSON.stringify(warnings) ? warnings : prev);
         }
-      } catch (e) {
+      } catch {
         // Silently catch aborts
       }
     };
@@ -654,7 +789,7 @@ export default function Trips() {
       clearTimeout(timeoutId); 
       abortController.abort(); 
     };
-  }, [data, isOnline, isDragging, timeToMinutes, editingItem]);
+  }, [data, isOnline, isDragging, editingItem]);
 
   const closeAnyOpenSwipeable = useCallback(() => {
     if (currentlyOpenId.current) {
@@ -748,7 +883,7 @@ export default function Trips() {
       note: localNote,
       planned_date: `${pYear}-${pMonth}-${pDay}` as any,
       planned_time: `${tHour}:${tMin} ${tPeriod}`,
-      duration_hours: dHour + (dMin / 60),
+      duration_hours: Number(dHour) + (Number(dMin) / 60),
     };
     setData(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
     setIsUnsaved(true); 
@@ -987,7 +1122,7 @@ export default function Trips() {
             <View style={styles.overlay}>
               <View style={styles.alertBox}>
                 <Ionicons name="warning" size={54} color={theme.colors.error} style={{ marginBottom: 10 }} />
-                <Text style={styles.alertTitle}>Schedule Conflict</Text>
+                <Text style={styles.alertTitle}>Schedule Warning</Text>
                 <Text style={styles.alertSub}>{selectedWarning}</Text>
                 <PrimaryButton title="Got it" onPress={() => setSelectedWarning(null)} style={styles.modalBtn} />
               </View>
